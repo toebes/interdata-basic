@@ -26,4 +26,83 @@
  * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-export class Basic {}
+import { Token, Tokenizer } from './lex';
+import { MAXLINE, Program } from './program';
+import { Variables } from './variables';
+
+export type outputFunction = (str: string) => void;
+export class Basic {
+    protected variables: Variables = new Variables();
+    protected program: Program = new Program();
+    protected tokenizer: Tokenizer = new Tokenizer();
+
+    public execute(cmd: string, out: outputFunction): void {
+        console.log(`Execute: ${cmd}`);
+        // Parse the first token
+        let token: Token;
+        let outputUnit = 5;
+        let tokenstr: string;
+        this.tokenizer.setLine(cmd);
+        [tokenstr, token] = this.tokenizer.getToken();
+        console.log(`First Token ${tokenstr} - ${token}`);
+        switch (token) {
+            case Token.NUMBER:
+                // This is a source line to be added / updated
+                this.program.addLine(
+                    Number(tokenstr),
+                    this.tokenizer.getRemainder()
+                );
+                break;
+            case Token.RUN:
+                out('Run Requested\r\n');
+                break;
+
+            case Token.LIST:
+                // LIST
+                // LIST ON (number)
+                // LIST ON (number) statement-no
+                // LIST ON (number) statement-no TO statement-no
+
+                [tokenstr, token] = this.tokenizer.getToken();
+                if (token === Token.ON) {
+                    [tokenstr, token] = this.tokenizer.getToken();
+                    if (token !== Token.NUMBER) {
+                        out(`ILLEGAL LIST ON VALUE '${tokenstr}\r\n`);
+                        return;
+                    }
+                    outputUnit = Number(tokenstr);
+                    [tokenstr, token] = this.tokenizer.getToken();
+                }
+                // See if we have a line number
+                let firstLine: number | undefined = undefined;
+                let lastLine: number | undefined = undefined;
+                if (token === Token.NUMBER) {
+                    firstLine = Number(tokenstr);
+                    // See if they told us TO
+                    [tokenstr, token] = this.tokenizer.getToken();
+                    if (token === Token.TO) {
+                        [tokenstr, token] = this.tokenizer.getToken();
+                        if (token === Token.NUMBER) {
+                            lastLine = Number(tokenstr);
+                        }
+                    }
+                }
+                if (firstLine === undefined) {
+                    firstLine = 1;
+                    lastLine = MAXLINE;
+                } else if (lastLine === undefined) {
+                    lastLine = firstLine;
+                }
+                const source = this.program.List(firstLine, lastLine);
+                source.forEach((sourceLine) => {
+                    out(
+                        `${sourceLine.getLineNum()} ${sourceLine.getSource()}\r\n`
+                    );
+                });
+                break;
+            default:
+                out(`UNHANDLED COMMAND '${tokenstr} - ${token}\r\n`);
+                break;
+        }
+    }
+}

@@ -27,7 +27,7 @@
  */
 
 import { SourceLine } from './sourceline';
-const MAXLINE = 65535;
+export const MAXLINE = 65535;
 
 export type RenumMap = { [key: number]: number };
 
@@ -41,10 +41,15 @@ export class Program {
      *          means the line doesn't exist or is beyond the end of the program
      */
     public findLineIndex(lineNum: number): number | undefined {
-        let result = undefined;
         // For efficiency, let's do a binary search
         let low = 0;
         let high = this.program.length - 1;
+        // If we have no lines or the number is beyond the end of the
+        // program so far, just return undefined
+        if (high < 0 || this.program[high].getLineNum() < lineNum) {
+            return undefined;
+        }
+        // We know that it is going to be inserted somewhere, just figure out where
         while (high > low) {
             const spot = Math.round((low + high) / 2);
             const spotLine = this.program[spot].getLineNum();
@@ -54,9 +59,13 @@ export class Program {
             if (lineNum > spotLine) {
                 low = spot;
             } else {
-                high = spot;
+                high = spot - 1;
             }
-            result = high;
+        }
+        let result = Math.max(low, high);
+        const endLine = this.program[result].getLineNum();
+        if (lineNum > endLine) {
+            result++;
         }
         return result;
     }
@@ -105,7 +114,7 @@ export class Program {
         let lastSpot = this.findLineIndex(endLine);
         if (
             lastSpot !== undefined &&
-            this.program[lastSpot].getLineNum() === endLine
+            this.program[lastSpot].getLineNum() <= endLine
         ) {
             lastSpot++;
         }

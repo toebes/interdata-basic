@@ -501,6 +501,9 @@ export class Tokenizer {
     protected line: string = '';
     protected pos: number = 0;
 
+    public getRemainder(): string {
+        return this.line.slice(this.pos);
+    }
     public setLine(line: string) {
         this.line = line;
         this.pos = 0;
