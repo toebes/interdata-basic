@@ -26,6 +26,7 @@
  * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 export enum Token {
+    ENDINPUT = 'END-OF-INPUT',
     INVALID = 'INVALID',
     CARET = 'CARET',
     COMMA = 'COMMA',
@@ -51,6 +52,7 @@ export enum Token {
     END = 'END',
     ENDTRACE = 'ENDTRACE',
     EOF = 'EOF',
+    ERASE = 'ERASE',
     ERL = 'ERL',
     ERRSTRING = 'ERRSTRING',
     ERROR = 'ERROR',
@@ -81,6 +83,7 @@ export enum Token {
     OR = 'OR',
     PAUSE = 'PAUSE',
     PRINT = 'PRINT',
+    RANDOM = 'RANDOM',
     READ = 'READ',
     REM = 'REM',
     RENUM = 'RENUM',
@@ -111,6 +114,7 @@ export enum Token {
     SEMI = 'SEMI',
     SLASH = 'SLASH',
     STAR = 'STAR',
+    EXPRESSION = 'EXPRESSION',
 }
 
 enum TokenAction {
@@ -138,6 +142,7 @@ enum TokenAction {
     K_END,
     K_ENDTRACE,
     K_EOF,
+    K_ERASE,
     K_ERL,
     K_ERRSTRING,
     K_ERROR,
@@ -168,6 +173,7 @@ enum TokenAction {
     K_OR,
     K_PAUSE,
     K_PRINT,
+    K_RANDOM,
     K_READ,
     K_REM,
     K_RENUM,
@@ -295,6 +301,10 @@ const LexAction: { [key: string]: TokenAction } = {
     EOF: TokenAction.K_EOF,
     /* ERL */ ER: TokenAction.GATHER,
     ERL: TokenAction.K_ERL,
+    /* ERASE */
+    ERA: TokenAction.GATHER,
+    ERAS: TokenAction.GATHER,
+    ERASE: TokenAction.K_ERASE,
     /* ERR$ */ ERR: TokenAction.GATHER,
     ERR$: TokenAction.K_ERRSTRING,
     /* ERROR */ ERRO: TokenAction.GATHER,
@@ -353,6 +363,11 @@ const LexAction: { [key: string]: TokenAction } = {
     PRI: TokenAction.GATHER,
     PRIN: TokenAction.GATHER,
     PRINT: TokenAction.K_PRINT,
+    /* RANDOM */ RA: TokenAction.GATHER,
+    RAN: TokenAction.GATHER,
+    RAND: TokenAction.GATHER,
+    RANDO: TokenAction.GATHER,
+    RANDOM: TokenAction.K_RANDOM,
     /* READ */ RE: TokenAction.GATHER,
     REA: TokenAction.GATHER,
     READ: TokenAction.K_READ,
@@ -435,6 +450,7 @@ const MapLexToken: { [key in TokenAction]?: Token } = {
     [TokenAction.K_ENDTRACE]: Token.ENDTRACE,
     [TokenAction.K_EOF]: Token.EOF,
     [TokenAction.K_ERL]: Token.ERL,
+    [TokenAction.K_ERASE]: Token.ERASE,
     [TokenAction.K_ERRSTRING]: Token.ERRSTRING,
     [TokenAction.K_ERROR]: Token.ERROR,
     [TokenAction.K_EXP]: Token.EXP,
@@ -459,6 +475,7 @@ const MapLexToken: { [key in TokenAction]?: Token } = {
     [TokenAction.K_ON]: Token.ON,
     [TokenAction.K_OR]: Token.OR,
     [TokenAction.K_PRINT]: Token.PRINT,
+    [TokenAction.K_RANDOM]: Token.RANDOM,
     [TokenAction.K_READ]: Token.READ,
     [TokenAction.K_REM]: Token.REM,
     [TokenAction.K_RENUM]: Token.RENUM,
@@ -497,16 +514,34 @@ const MapLexToken: { [key in TokenAction]?: Token } = {
     [TokenAction.K_SIZE]: Token.SIZE,
 };
 
+export type TokenItem = {
+    tok: Token;
+    tokenstr: string;
+    pos: number;
+};
+
 export class Tokenizer {
     protected line: string = '';
     protected pos: number = 0;
+    protected tokenstack: TokenItem[] = [];
+    protected stackpos: number = 0;
 
     public getRemainder(): string {
-        return this.line.slice(this.pos);
+        let pos = this.pos;
+        if (this.stackpos < this.tokenstack.length) {
+            pos = this.tokenstack[this.stackpos].pos;
+        }
+        return this.line.slice(pos);
     }
+    /**
+     *
+     * @param line New line to parse
+     */
     public setLine(line: string) {
         this.line = line;
         this.pos = 0;
+        this.stackpos = 0;
+        this.tokenstack = [];
     }
     /**
      * Get the next character on the line
@@ -538,19 +573,27 @@ export class Tokenizer {
         }
     }
     public getDigits(initial: string): [string, string] {
-        let char = this.nextNonBlank();
+        let char = this.nextChar();
         while (char >= '0' && char <= '9') {
             initial += char;
-            char = this.nextNonBlank();
+            char = this.nextChar();
         }
         return [initial, char];
     }
+    /**
+     *
+     * @returns String with text of token and current token
+     */
 
-    public getToken(): [string, Token] {
+    public parseToken(): TokenItem {
         let char = this.nextNonBlank().toUpperCase();
+        if (char === '') {
+            return { pos: this.pos, tokenstr: char, tok: Token.ENDINPUT };
+        }
+        const pos = this.pos - 1;
         let action = LexAction[char];
         if (action === undefined) {
-            return [char, Token.INVALID];
+            return { pos: pos, tokenstr: char, tok: Token.INVALID };
         }
         let gathered = char;
         let tokentype = Token.INVALID;
@@ -561,12 +604,16 @@ export class Tokenizer {
                 char = this.nextChar();
                 while (char !== '"') {
                     if (char === undefined) {
-                        return [gathered, Token.INVALID];
+                        return {
+                            pos: pos,
+                            tokenstr: gathered,
+                            tok: Token.INVALID,
+                        };
                     }
                     gathered += char;
                     char = this.nextChar();
                 }
-                return [gathered, Token.STRING];
+                return { pos: pos, tokenstr: gathered, tok: Token.STRING };
 
             case TokenAction.DIGIT:
                 // Parse a number of the form [0-9]*[.][0-9]*[E[+-]?[0-9]*]
@@ -589,37 +636,57 @@ export class Tokenizer {
                         char = this.nextNonBlank();
                     }
                     if (char < '0' || char > '9') {
-                        return [gathered, Token.INVALID];
+                        return {
+                            pos: pos,
+                            tokenstr: gathered,
+                            tok: Token.INVALID,
+                        };
                     }
                     [gathered, char] = this.getDigits(gathered);
                 }
                 this.pushBack(char);
-                return [gathered, Token.NUMBER];
+                return { pos: pos, tokenstr: gathered, tok: Token.NUMBER };
 
             case TokenAction.GATHER_GREATER:
                 char = this.nextNonBlank();
                 if (char === '=') {
-                    return [gathered + char, Token.GREATEREQUAL];
+                    return {
+                        pos: pos,
+                        tokenstr: gathered + char,
+                        tok: Token.GREATEREQUAL,
+                    };
                 } else if (char === '>') {
-                    return [gathered + char, Token.NOTEQUAL];
+                    return {
+                        pos: pos,
+                        tokenstr: gathered + char,
+                        tok: Token.NOTEQUAL,
+                    };
                 }
                 this.pushBack(char);
-                return [gathered, Token.GREATER];
+                return { pos: pos, tokenstr: gathered, tok: Token.GREATER };
 
             case TokenAction.GATHER_LESS:
                 char = this.nextNonBlank();
                 if (char === '=') {
-                    return [gathered + char, Token.LESSEQUAL];
+                    return {
+                        pos: pos,
+                        tokenstr: gathered + char,
+                        tok: Token.LESSEQUAL,
+                    };
                 }
                 this.pushBack(char);
-                return [gathered, Token.LESS];
+                return { pos: pos, tokenstr: gathered, tok: Token.LESS };
 
             case TokenAction.VAR:
             case TokenAction.KEYORVAR:
                 char = this.nextNonBlank();
                 // Looking for string variable like "A$"
                 if (char === '$') {
-                    return [gathered + char, Token.STRINGVAR];
+                    return {
+                        pos: pos,
+                        tokenstr: gathered + char,
+                        tok: Token.STRINGVAR,
+                    };
                 }
 
                 tokentype = Token.VARIABLE;
@@ -633,19 +700,19 @@ export class Tokenizer {
                     } else {
                         this.pushBack(char);
                     }
-                    return [gathered, tokentype];
+                    return { pos: pos, tokenstr: gathered, tok: tokentype };
                 }
                 if (
                     action === TokenAction.VAR ||
                     LexAction[gathered + char.toUpperCase()] === undefined
                 ) {
                     this.pushBack(char);
-                    return [gathered, tokentype];
+                    return { pos: pos, tokenstr: gathered, tok: tokentype };
                 }
                 action = LexAction[gathered + char.toUpperCase()];
                 if (action === undefined) {
                     this.pushBack(char);
-                    return [gathered, Token.INVALID];
+                    return { pos: pos, tokenstr: gathered, tok: Token.INVALID };
                 }
                 gathered += char.toUpperCase();
 
@@ -671,7 +738,7 @@ export class Tokenizer {
                             tokentype = Token.INVALID;
                         }
                         this.pushBack(char);
-                        return [gathered, tokentype];
+                        return { pos: pos, tokenstr: gathered, tok: tokentype };
                     }
                     gathered += char.toUpperCase();
                     char = this.nextNonBlank();
@@ -686,10 +753,14 @@ export class Tokenizer {
                 if (action === TokenAction.K_FN) {
                     let fnc = char.toUpperCase();
                     if (fnc >= 'A' && fnc <= 'Z') {
-                        return [gathered + fnc, Token.FN];
+                        return {
+                            pos: pos,
+                            tokenstr: gathered + fnc,
+                            tok: Token.FN,
+                        };
                     }
                     this.pushBack(char);
-                    return [gathered, Token.INVALID];
+                    return { pos: pos, tokenstr: gathered, tok: Token.INVALID };
                 }
                 this.pushBack(char);
 
@@ -697,10 +768,40 @@ export class Tokenizer {
             default:
                 let lexType = MapLexToken[action];
                 if (lexType !== undefined) {
-                    return [gathered, lexType];
+                    return { pos: pos, tokenstr: gathered, tok: lexType };
                 }
                 break;
         }
-        return [gathered, tokentype];
+        return { pos: pos, tokenstr: gathered, tok: tokentype };
+    }
+    /**
+     * Get the next token (taking into account any token state pushback)
+     * @returns Next token
+     */
+    public getToken(): [string, Token] {
+        if (this.stackpos < this.tokenstack.length) {
+            const tokenstr = this.tokenstack[this.stackpos].tokenstr;
+            const token = this.tokenstack[this.stackpos].tok;
+            this.stackpos++;
+            return [tokenstr, token];
+        }
+        const item = this.parseToken();
+        this.tokenstack.push(item);
+        this.stackpos = this.tokenstack.length;
+        return [item.tokenstr, item.tok];
+    }
+    /**
+     * Save where we are in the parsing
+     * @returns Save state to be restored later
+     */
+    public saveState(): number {
+        return this.stackpos;
+    }
+    /**
+     * Restore where we are in parsing.
+     * @param pos Position to restore t
+     */
+    public restoreState(pos: number): void {
+        this.stackpos = pos;
     }
 }

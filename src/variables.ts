@@ -113,7 +113,7 @@ export class Variables {
         startIndex: number,
         endIndex: number,
         value: string
-    ) {
+    ): string {
         const entry = this.stringMap[variable.toUpperCase()];
         if (entry === undefined) {
             return `STRING VARIABLE ${variable.toUpperCase()} NOT DECLARED`;
@@ -148,17 +148,18 @@ export class Variables {
                 entry.val.substring(start + value.length);
             entry.curLen = start + value.length;
         }
+        return '';
     }
     /**
      * Get the value of a string variable
      * @param variable String variable to retrieve
      * @returns [Current string based on recorded length or undefined if not found, Error if any or '' on success]
      */
-    public getString(variable: string): [string | undefined, string] {
+    public getString(variable: string): [string, string] {
         const entry = this.stringMap[variable.toUpperCase()];
         if (entry === undefined) {
             return [
-                undefined,
+                '',
                 `STRING VARIABLE ${variable.toUpperCase()} NOT DEFINED`,
             ];
         }

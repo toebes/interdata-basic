@@ -60,6 +60,13 @@ function setDivContentLines(id: string, content: string[]) {
 
 async function runInterpreter(term: Terminal, localEcho: any): Promise<void> {
     const basic = new Basic();
+    basic.io.OpenUnit(
+        '5',
+        () => {
+            return undefined;
+        },
+        (str) => term.write(str)
+    );
     term.write('Interdata 7/16 Basic\r\n');
     term.onKey((evt) => {
         if (
@@ -69,7 +76,7 @@ async function runInterpreter(term: Terminal, localEcho: any): Promise<void> {
             !evt.domEvent.metaKey
         ) {
             console.log('BREAK REQUESTED');
-            term.write('*BREAK*\r\n');
+            basic.Break();
         }
     });
 
@@ -77,7 +84,7 @@ async function runInterpreter(term: Terminal, localEcho: any): Promise<void> {
         try {
             const input = await localEcho.read('');
             console.log(`Input: '${input}'`);
-            basic.execute(input, (str: string) => term.write(str));
+            basic.execute(input);
         } catch (error) {
             console.log(`Error reading: ${error}`);
         }

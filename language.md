@@ -103,7 +103,7 @@ Note that the expression must be a numberic value (integerized by the `INT` func
 
 `IF` [&lt;expr&gt;](#expressions) [`GO` `TO`| `THEN`]  [&lt;statement-number&gt;](#expressions)
 
-`IF` [&lt;expr&gt;](#expressions) [`GO` `TO`| `THEN`]  [&lt;statement&gt;](#statements)
+`IF` [&lt;expr&gt;](#expressions) `THEN`  [&lt;statement&gt;](#statements)
 
 ### `INPUT`       &mdash; Request data from an input device
 
