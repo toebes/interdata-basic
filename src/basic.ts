@@ -77,6 +77,7 @@ export class Basic {
             [Token.PRINT]: this.cmdPRINT.bind(this),
             [Token.DIM]: this.cmdDIM.bind(this),
             [Token.GOTO]: this.cmdGOTO.bind(this),
+            [Token.END]: this.cmdEND.bind(this),
             [Token.DEF]: this.cmdDEF.bind(this),
         };
 
@@ -470,6 +471,9 @@ export class Basic {
         }
         this.isRunning = true;
         this.doRun();
+    }
+    private cmdEND(parsed: ParseResult) {
+        this.isRunning = false;
     }
     private cmdDIM(parsed: ParseResult) {
         do {
