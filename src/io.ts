@@ -26,11 +26,12 @@
  * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 export type OutputFunction = (str: string) => void;
-export type InputFunction = () => string | undefined;
+export type InputFunction = () => Promise<string | undefined>;
 
-type LogicalUnit = {
+export type LogicalUnit = {
     inputFunction: InputFunction;
     outputFunction: OutputFunction;
+    tabPos: number;
 };
 
 export class IO {
@@ -40,8 +41,10 @@ export class IO {
      * Return an input string from the default input.  In this case we simulate EOF
      * @returns Input string
      */
-    protected defaultInput(): string | undefined {
-        return undefined;
+    protected defaultInput(): Promise<string | undefined> {
+        return new Promise((resolve, reject) => {
+            resolve(undefined);
+        });
     }
     /**
      * Write output to an unassigned unit
@@ -55,13 +58,14 @@ export class IO {
      * @param unit Unit number to look for
      * @returns Logical unit if found in map or dummy unit
      */
-    public GetUnit(unit: string): LogicalUnit {
+    public GetUnit(unit = '5'): LogicalUnit {
         const lookupUnit = this.mapUnitNumber(unit);
         let result: LogicalUnit = this.units[lookupUnit];
         if (result === undefined) {
             result = {
                 inputFunction: this.defaultInput,
                 outputFunction: this.defaultOutput,
+                tabPos: 0,
             };
         }
         return result;
@@ -72,7 +76,11 @@ export class IO {
      * @returns number corresponding to the unit.
      */
     protected mapUnitNumber(unit: string) {
-        return Math.floor(Number(unit));
+        const unitNum = Number(unit);
+        if (isNaN(unitNum)) {
+            return 0;
+        }
+        return Math.floor(unitNum);
     }
     /**
      * Assign input/output vectors to a unit
@@ -89,6 +97,7 @@ export class IO {
         this.units[lookupUnit] = {
             inputFunction: inputFunction,
             outputFunction: outputFunction,
+            tabPos: 0,
         };
     }
     /**
@@ -104,15 +113,18 @@ export class IO {
      * @param unit Logical Unit
      * @returns String of bytes from unit
      */
-    public Read(unit = '5'): string {
-        this.EOFonLastIO = false;
-        const logicalUnit = this.GetUnit(unit);
-        let result = logicalUnit.inputFunction();
-        if (result === undefined) {
-            result = '';
-            this.EOFonLastIO = true;
-        }
-        return result;
+    public async Read(unit = '5'): Promise<string> {
+        return new Promise<string>((resolve, reject) => {
+            this.EOFonLastIO = false;
+            const logicalUnit = this.GetUnit(unit);
+            logicalUnit.inputFunction().then((result) => {
+                if (result === undefined) {
+                    result = '';
+                    this.EOFonLastIO = true;
+                }
+                resolve(result);
+            });
+        });
     }
     /**
      * Did the last read operation hit the end of the input?

@@ -2,7 +2,7 @@
  * Copyright (c) 2023 John Toebes
  *
  * Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
- *
+ *unit
  * 1. Redistributions of source code must retain the above copyright notice,
  *    this list of conditions and the following disclaimer.
  *
@@ -29,9 +29,23 @@
 import { IO } from './io';
 import { Token, Tokenizer } from './lex';
 import { MAXLINE, Program } from './program';
-import { LETSyntax, ParseResult, SyntaxElem, statementLookup } from './syntax';
+import {
+    LETSyntax,
+    PRINTVarSyntax,
+    ParseResult,
+    SyntaxElem,
+    statementLookup,
+} from './syntax';
 import { Variables } from './variables';
 
+const TABSTOP = 14;
+const MAXOUTPUTLINE = 132;
+type ForState = {
+    var: string;
+    end: number;
+    step: number;
+    sourceIndex: number;
+};
 export class Basic {
     protected variables = new Variables();
     protected program = new Program();
@@ -39,6 +53,11 @@ export class Basic {
     public io = new IO();
     protected lastErrorString = '';
     protected lastErrorLine = 0;
+    protected isRunning = false;
+    protected isTracing = false;
+    protected runSourceIndex = 0;
+    protected forStack: ForState[] = [];
+
     protected cmdLookup: Partial<Record<Token, (parsed: ParseResult) => void>> =
         {
             [Token.RUN]: this.cmdRUN.bind(this),
@@ -46,7 +65,35 @@ export class Basic {
             [Token.ERASE]: this.cmdErase.bind(this),
             [Token.LET]: this.cmdLET.bind(this),
             [Token.NEW]: this.cmdNEW.bind(this),
+            [Token.FOR]: this.cmdFOR.bind(this),
+            [Token.NEXT]: this.cmdNEXT.bind(this),
+            [Token.ENDTRACE]: this.cmdENDTRACE.bind(this),
+            [Token.SETTRACE]: this.cmdSETTRACE.bind(this),
+            [Token.PRINT]: this.cmdPRINT.bind(this),
         };
+
+    public async doRun() {
+        while (this.isRunning) {
+            let source = this.program.getSourceLine(this.runSourceIndex);
+            if (source === undefined) {
+                this.io.WriteLine('END');
+                this.isRunning = false;
+                return;
+            }
+            this.runSourceIndex++;
+            let cmd = source.getSource();
+            if (this.isTracing) {
+                this.io.WriteLine(`TRACE: ${source.getLineNum()}: ${cmd}`);
+            }
+            this.execute(cmd);
+            if (this.isRunning) {
+                await this.delay(1);
+            }
+        }
+    }
+    public delay(ms: number) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+    }
 
     public execute(cmd: string): void {
         // Parse the first token
@@ -93,6 +140,199 @@ export class Basic {
         this.program.EraseRange(0, MAXLINE);
         this.variables.New();
     }
+    public programError(msg: string) {
+        // See if we have an ON ERROR in effect first
+        this.isRunning = false;
+        this.io.WriteLine(msg);
+    }
+
+    public isNumber(val: string): boolean {
+        const trimmedStr = val.trim();
+        return trimmedStr !== '' && !isNaN(Number(trimmedStr));
+    }
+    // Numbers in the range .1 to 999999 are printed using 6 significant digits
+    public formatNumber(num: number, significantDigits: number = 1): string {
+        if (num === 0) {
+            return '0';
+        }
+        let sign = '';
+        if (num < 0) {
+            num = -num;
+            sign = '-';
+        }
+        //if (num >= 0.1 && num <= 999999) {
+        let result = String(num);
+        if (result.indexOf('e') < 0) {
+            let pieces = (result + '..').split('.');
+            let limit = 7;
+            if (pieces[0] === '0') {
+                result = '.' + pieces[1];
+            } else if (pieces[1] != '') {
+                result = pieces[0] + '.' + pieces[1];
+            } else {
+                result = pieces[0];
+                limit = 6;
+            }
+            if (result.length <= limit) {
+                return sign + result;
+            }
+        }
+        //}
+        const exponentString = num.toExponential(6);
+        const match = /^-?(\d\.\d{0,6})e([-+]\d+)$/.exec(exponentString);
+        if (match === null) {
+            return '?' + String(num) + '?';
+        }
+        let mantissa = Number(match[1]);
+        let expval = Number(match[2]);
+
+        while (mantissa > 1) {
+            mantissa /= 10;
+            expval++;
+        }
+
+        let esign = '';
+        if (expval > 0) {
+            esign = '+';
+        }
+        return `${sign}${String(mantissa).replace(/^0/, '')}E${esign}${expval}`;
+    }
+
+    // print .00000002
+    // print -.0002
+    // print 200
+    // print -200.002
+    // print 2000000
+    // print -20000000000
+    // print -2.000
+    // print 00.0
+
+    public cmdPRINT(parsed: ParseResult) {
+        if (parsed.using) {
+            this.programError('PRINT USING NOT YET SUPPORTED');
+            return;
+        }
+        let logicalUnit = this.io.GetUnit(parsed.unit);
+        while (parsed.printitem !== undefined) {
+            let out = '';
+            if (parsed.tab !== undefined) {
+                let tabpos = Number(parsed.tab);
+                if (
+                    !isNaN(tabpos) &&
+                    tabpos < MAXOUTPUTLINE &&
+                    tabpos > logicalUnit.tabPos
+                ) {
+                    out = ' '.repeat(tabpos - 1 - logicalUnit.tabPos);
+                }
+            } else if (!this.isNumber(parsed.expression)) {
+                out = parsed.expression;
+            } else {
+                out = this.formatNumber(Number(parsed.expression));
+            }
+            // If it won't fit on the line we put it on the next one
+            if (logicalUnit.tabPos + out.length > MAXOUTPUTLINE) {
+                logicalUnit.outputFunction('\r\n');
+                logicalUnit.tabPos = 0;
+            }
+            // See how we need to adjust the value..
+            if (parsed.tab === undefined && parsed.semi !== undefined) {
+                out += ' ';
+            } else if (parsed.tab === undefined && parsed.comma !== undefined) {
+                // Tabstops are every 14. So pad it with the correct number of spaces to get to the next tabstop
+                out += ' '.repeat(
+                    TABSTOP - ((logicalUnit.tabPos + out.length) % TABSTOP)
+                );
+            } else if (parsed.endinput !== undefined) {
+                out += '\r\n';
+                logicalUnit.outputFunction(out);
+                logicalUnit.tabPos = 0;
+                return;
+            }
+            logicalUnit.tabPos += out.length;
+            logicalUnit.outputFunction(out);
+            parsed = this.Parse(this.tokenizer, PRINTVarSyntax);
+        }
+        // IF we didn't get all the way to the end of the print line, something is wrong
+        if (!parsed.endinput) {
+            this.programError('SYNTAX ERROR');
+        }
+    }
+    public cmdENDTRACE(parsed: ParseResult) {
+        this.isTracing = false;
+    }
+    public cmdSETTRACE(parsed: ParseResult) {
+        this.isTracing = true;
+    }
+
+    /**
+     * For loop
+     * @param parsed Parsed structure
+     */
+    private cmdFOR(parsed: ParseResult) {
+        if (this.forStack.length >= 6) {
+            this.programError(`FOR LOOP NESTED MORE THAN 6 DEEP`);
+            return;
+        }
+        // Make sure the variable isn't in in the stack
+        if (this.forStack.findIndex((state) => state.var === parsed.var) >= 0) {
+            this.programError(`CAN'T REUSE FOR VARIABLE ${parsed.var}`);
+            return;
+        }
+        let step = 1;
+        if (parsed.step !== undefined) {
+            step = Number(parsed.step);
+        }
+        this.forStack.push({
+            var: parsed.var,
+            end: Number(parsed.end),
+            step: step,
+            sourceIndex: this.runSourceIndex,
+        });
+        this.variables.SetNumericVar(parsed.var, Number(parsed.start));
+    }
+    /**
+     * Next
+     * @param parsed Parsed structure
+     */
+    private cmdNEXT(parsed: ParseResult) {
+        const nextIndex = this.forStack.findIndex(
+            (state) => state.var === parsed.var
+        );
+
+        if (nextIndex === -1) {
+            this.programError(`NO FOR IN PROGRESS FOR ${parsed.var}`);
+            return;
+        }
+        let state = this.forStack[nextIndex];
+        let [current, emsg] = this.variables.GetNumbericVar(state.var);
+
+        if (emsg !== '') {
+            this.programError(emsg);
+            return;
+        }
+        if (current === undefined) {
+            current = 0;
+        }
+        current += state.step;
+        this.variables.SetNumericVar(state.var, current);
+        // See if we are counting up or down
+        if (
+            (state.step > 0 && current > state.end) ||
+            (state.step < 0 && current < state.end)
+        ) {
+            // We are done with the loop, so purge the stack to this point
+            this.forStack.splice(nextIndex, this.forStack.length - nextIndex);
+        } else {
+            // We have to continue the loop, but if there is anything on the stack above us, remove them
+            if (nextIndex < this.forStack.length) {
+                this.forStack.splice(
+                    nextIndex + 1,
+                    this.forStack.length - nextIndex
+                );
+            }
+            this.runSourceIndex = state.sourceIndex;
+        }
+    }
 
     /**
      * Process LET command
@@ -118,13 +358,6 @@ export class Basic {
                     Number(parsed.expression)
                 );
             }
-            if (emsg !== '') {
-                this.io.WriteLine(emsg);
-            } else {
-                this.io.WriteLine(
-                    `LET ${parsed.variable} = ${parsed.expression}`
-                );
-            }
         } else if (parsed.index2 === undefined) {
             if (isString) {
                 emsg = this.variables.SetStringArray(
@@ -137,13 +370,6 @@ export class Basic {
                     varname,
                     Number(parsed.index1),
                     Number(parsed.expression)
-                );
-            }
-            if (emsg !== '') {
-                this.io.WriteLine(emsg);
-            } else {
-                this.io.WriteLine(
-                    `LET ${parsed.variable}(${parsed.index1}) = ${parsed.expression}`
                 );
             }
         } else {
@@ -162,13 +388,9 @@ export class Basic {
                     Number(parsed.expression)
                 );
             }
-            if (emsg !== '') {
-                this.io.WriteLine(emsg);
-            } else {
-                this.io.WriteLine(
-                    `LET ${parsed.variable}(${parsed.index1},${parsed.index2}) = ${parsed.expression}`
-                );
-            }
+        }
+        if (emsg !== '') {
+            this.io.WriteLine(emsg);
         }
     }
 
@@ -184,17 +406,20 @@ export class Basic {
     }
 
     private cmdLIST(parsed: ParseResult) {
-        let firstLine = parsed.start as number;
-        let lastLine = parsed.end as number;
+        let firstLine = 1;
+        let lastLine = MAXLINE;
+        if (parsed.start !== undefined) {
+            firstLine = Number(parsed.start);
+            if (parsed.end === undefined) {
+                lastLine = firstLine;
+            } else {
+                lastLine = Number(parsed.end);
+            }
+        }
+
         let unit: string | undefined;
         if (parsed.unit !== undefined) {
-            unit = parsed.unit as string;
-        }
-        if (firstLine === undefined) {
-            firstLine = 1;
-            lastLine = MAXLINE;
-        } else if (lastLine === undefined) {
-            lastLine = firstLine;
+            unit = parsed.unit;
         }
         const source = this.program.List(firstLine, lastLine);
         source.forEach((sourceLine) => {
@@ -206,7 +431,21 @@ export class Basic {
     }
 
     private cmdRUN(parsed: ParseResult) {
-        this.io.WriteLine('Run Requested');
+        if (parsed.line !== undefined) {
+            // Find the line number
+            const spot = this.program.findLineIndex(Number(parsed.line));
+            if (spot === undefined) {
+                this.io.WriteLine(`LINE ${parsed.line} NOT FOUND`);
+                return;
+            }
+            this.runSourceIndex = spot;
+        } else {
+            this.variables.New();
+            this.runSourceIndex = 0;
+            this.forStack = [];
+        }
+        this.isRunning = true;
+        this.doRun();
     }
 
     public Break() {
@@ -505,6 +744,11 @@ export class Basic {
         }
         return [value, undefined];
     }
+    /**
+     *
+     * @param source
+     * @returns
+     */
     public EvalExpression(source: Tokenizer): [string, string | undefined] {
         let [value, emsg] = this.EvalExpression7(source);
         if (emsg !== undefined) {
@@ -522,10 +766,10 @@ export class Basic {
         return [value, undefined];
     }
     /**
-     *
-     * @param source
-     * @param syntax
-     * @returns
+     * Parse source code using a given syntax structure
+     * @param source Source code line to parse
+     * @param syntax Syntax elements to parse against
+     * @returns map of values parsed
      */
     public Parse(source: Tokenizer, syntax: SyntaxElem[]): ParseResult {
         let result: ParseResult = {};
@@ -573,12 +817,20 @@ export class Basic {
                 }
             }
             if (syntaxElem.optional !== undefined) {
-                const saveState = source.saveState();
-                let subData = this.Parse(source, syntaxElem.optional);
-                if (subData['error'] === undefined) {
-                    result = { ...result, ...subData };
-                } else {
-                    source.restoreState(saveState);
+                if (
+                    syntaxElem.val === undefined ||
+                    result[syntaxElem.val] === undefined
+                ) {
+                    const saveState = source.saveState();
+                    let subData = this.Parse(source, syntaxElem.optional);
+                    if (subData['error'] === undefined) {
+                        result = { ...result, ...subData };
+                        if (syntaxElem.val !== undefined) {
+                            result[syntaxElem.val] = '1';
+                        }
+                    } else {
+                        source.restoreState(saveState);
+                    }
                 }
             }
         }

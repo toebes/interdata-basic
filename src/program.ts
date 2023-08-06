@@ -34,6 +34,12 @@ export type RenumMap = { [key: number]: number };
 export class Program {
     protected program: SourceLine[] = [];
 
+    public getSourceLine(spot?: number): SourceLine | undefined {
+        if (spot === undefined || spot < 0 || spot >= this.program.length) {
+            return undefined;
+        }
+        return this.program[spot];
+    }
     /**
      * Find the index in the program for a given line
      * @param lineNum Line number to locate

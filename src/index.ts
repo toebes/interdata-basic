@@ -62,8 +62,8 @@ async function runInterpreter(term: Terminal, localEcho: any): Promise<void> {
     const basic = new Basic();
     basic.io.OpenUnit(
         '5',
-        () => {
-            return undefined;
+        (): Promise<string | undefined> => {
+            return localEcho.read('');
         },
         (str) => term.write(str)
     );

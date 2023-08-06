@@ -28,10 +28,11 @@ import { Token, Tokenizer } from './lex';
  * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-export type ParseResult = { [id: string]: string | number };
+export type ParseResult = { [id: string]: string };
 export type SyntaxElem = {
     tok?: Token;
     val?: string;
+    oneof?: SyntaxElem[];
     optional?: SyntaxElem[];
     include?: SyntaxElem[];
 };
@@ -275,15 +276,34 @@ export const ONSyntax: SyntaxElem[] = [
 export const PRINTVarSyntax: SyntaxElem[] = [
     {
         optional: [
-            { tok: Token.EXPRESSION, val: 'expression' },
-            { optional: [{ tok: Token.COMMA, val: 'comma' }] },
-            { optional: [{ tok: Token.SEMI, val: 'semi' }] },
+            {
+                val: 'printitem',
+                optional: [
+                    { tok: Token.TAB },
+                    { tok: Token.LPAREN },
+                    { tok: Token.EXPRESSION, val: 'tab' },
+                    { tok: Token.RPAREN },
+                ],
+            },
+            {
+                val: 'printitem',
+                optional: [{ tok: Token.EXPRESSION, val: 'expression' }],
+            },
+            { val: 'sep', optional: [{ tok: Token.COMMA, val: 'comma' }] },
+            { val: 'sep', optional: [{ tok: Token.SEMI, val: 'semi' }] },
         ],
     },
     { optional: [{ tok: Token.ENDINPUT, val: 'endinput' }] },
 ];
 export const PRINTSyntax: SyntaxElem[] = [
     { include: ONUNITSyntax },
+    {
+        optional: [
+            { tok: Token.USING },
+            { tok: Token.EXPRESSION, val: 'using' },
+            { tok: Token.COMMA },
+        ],
+    },
     { include: PRINTVarSyntax },
 ];
 // RANDOM
