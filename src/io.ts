@@ -58,7 +58,7 @@ export class IO {
      * @param unit Unit number to look for
      * @returns Logical unit if found in map or dummy unit
      */
-    public GetUnit(unit = '5'): LogicalUnit {
+    public GetUnit(unit = 5): LogicalUnit {
         const lookupUnit = this.mapUnitNumber(unit);
         let result: LogicalUnit = this.units[lookupUnit];
         if (result === undefined) {
@@ -75,12 +75,11 @@ export class IO {
      * @param unit String representing the unit
      * @returns number corresponding to the unit.
      */
-    protected mapUnitNumber(unit: string) {
-        const unitNum = Number(unit);
-        if (isNaN(unitNum)) {
+    protected mapUnitNumber(unit: number) {
+        if (isNaN(unit)) {
             return 0;
         }
-        return Math.floor(unitNum);
+        return Math.floor(unit);
     }
     /**
      * Assign input/output vectors to a unit
@@ -89,7 +88,7 @@ export class IO {
      * @param outputFunction Function to write from unit
      */
     public OpenUnit(
-        unit: string,
+        unit: number,
         inputFunction: InputFunction = this.defaultInput,
         outputFunction: OutputFunction = this.defaultOutput
     ) {
@@ -104,7 +103,7 @@ export class IO {
      * Disconnect I/O to a logical unit
      * @param unit Logical unit
      */
-    public CloseUnit(unit: string): void {
+    public CloseUnit(unit: number): void {
         const lookupUnit = this.mapUnitNumber(unit);
         delete this.units[lookupUnit];
     }
@@ -113,7 +112,7 @@ export class IO {
      * @param unit Logical Unit
      * @returns String of bytes from unit
      */
-    public async Read(unit = '5'): Promise<string> {
+    public async Read(unit = 5): Promise<string> {
         return new Promise<string>((resolve, reject) => {
             this.EOFonLastIO = false;
             const logicalUnit = this.GetUnit(unit);
@@ -138,7 +137,7 @@ export class IO {
      * @param unit Logical unit
      * @param str String to output
      */
-    public Write(unit = '5', str: string) {
+    public Write(unit = 5, str: string) {
         const logicalUnit = this.GetUnit(unit);
         logicalUnit.outputFunction(str);
     }
@@ -147,14 +146,14 @@ export class IO {
      * @param unit Logical unit
      * @param str String to output
      */
-    public WriteLine(str: string, unit = '5') {
+    public WriteLine(str: string, unit = 5) {
         this.Write(unit, str + '\r\n');
     }
     /**
      * Rewind the logical unit to the beginnign (if it supports it)
      * @param unit Logical unit
      */
-    public Rewind(unit: string) {
+    public Rewind(unit: number) {
         // const logicalUnit = this.GetUnit(unit);
         console.log(`Rewind unit ${unit}`);
     }
@@ -162,7 +161,7 @@ export class IO {
      * Write a file mark (end of record) to the logical unit (if it supports it)
      * @param unit Logical unit
      */
-    public WriteFileMark(unit: string) {
+    public WriteFileMark(unit: number) {
         // const logicalUnit = this.GetUnit(unit);
         console.log(`Write File Mark ${unit}`);
     }
@@ -170,7 +169,7 @@ export class IO {
      * Backspace the logical unit one record (if it supports it)
      * @param unit Logical unit
      */
-    public BackSpace(unit: string) {
+    public BackSpace(unit: number) {
         // const logicalUnit = this.GetUnit(unit);
         console.log(`BackSpace ${unit}`);
     }

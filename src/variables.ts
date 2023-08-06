@@ -26,6 +26,7 @@
  * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+export type ErrMsg = string | undefined;
 export type VarString = { val: string; maxLen: number; curLen: number };
 export type VarStringArray = {
     val: string[];
@@ -39,26 +40,36 @@ export type VarNumberArray = {
     columns: number;
     maxEntries: number;
 };
+export type FNDef = { parm: string; def: string };
 
 export class Variables {
     protected stringMap: { [key: string]: VarString } = {};
     protected stringArrayMap: { [key: string]: VarStringArray } = {};
     protected numberMap: { [key: string]: VarNumber } = {};
     protected numberArrayMap: { [key: string]: VarNumberArray } = {};
+    protected fnMap: { [key: string]: FNDef } = {};
 
     public New(): void {
         this.stringMap = {};
         this.stringArrayMap = {};
         this.numberMap = {};
         this.numberArrayMap = {};
+        this.fnMap = {};
+    }
+    public DefFN(fn: string, parm: string, def: string): ErrMsg {
+        this.fnMap[fn] = { parm: parm, def: def };
+        return undefined;
+    }
+    public GetFN(fn: string): FNDef | undefined {
+        return this.fnMap[fn];
     }
     /**
      * Dimension a String variable
      * @param variable Variable to be dimensioned
      * @param length Maximum length of variable
-     * @returns Error message or '' upon success
+     * @returns Error message or undefined upon success
      */
-    public DimString(variable: string, length: number): string {
+    public DimString(variable: string, length: number): ErrMsg {
         const entry = this.stringMap[variable.toUpperCase()];
         if (entry !== undefined) {
             return `STRING VARIABLE ${variable.toUpperCase()} PREVIOUSLY DECLARED`;
@@ -68,16 +79,16 @@ export class Variables {
             maxLen: length,
             curLen: 0,
         };
-        return '';
+        return undefined;
     }
     /**
      * Set a string variable to a value.  Note that the
      * string must have been previously DIMe
      * @param variable String variable to set
      * @param value New value to set
-     * @returns Error message or '' upon success
+     * @returns Error message or undefined upon success
      */
-    public setString(variable: string, value: string): string {
+    public setString(variable: string, value: string): ErrMsg {
         const entry = this.stringMap[variable.toUpperCase()];
         if (entry === undefined) {
             return `STRING VARIABLE ${variable.toUpperCase()} NOT DECLARED`;
@@ -98,7 +109,7 @@ export class Variables {
             entry.val = value + entry.val.substring(value.length);
             entry.curLen = value.length;
         }
-        return '';
+        return undefined;
     }
     /**
      * Update a part of a string variable
@@ -106,14 +117,14 @@ export class Variables {
      * @param startIndex Starting index to replace characters (1 based)
      * @param endIndex Ending index to replace characters (1 based)
      * @param value New string to place
-     * @returns Error message or '' upon success
+     * @returns Error message or undefined upon success
      */
     public setSubString(
         variable: string,
         startIndex: number,
         endIndex: number,
         value: string
-    ): string {
+    ): ErrMsg {
         const entry = this.stringMap[variable.toUpperCase()];
         if (entry === undefined) {
             return `STRING VARIABLE ${variable.toUpperCase()} NOT DECLARED`;
@@ -148,14 +159,14 @@ export class Variables {
                 entry.val.substring(start + value.length);
             entry.curLen = start + value.length;
         }
-        return '';
+        return undefined;
     }
     /**
      * Get the value of a string variable
      * @param variable String variable to retrieve
-     * @returns [Current string based on recorded length or undefined if not found, Error if any or '' on success]
+     * @returns [Current string based on recorded length or undefined if not found, Error if any or undefined on success]
      */
-    public getString(variable: string): [string, string] {
+    public getString(variable: string): [string, ErrMsg] {
         const entry = this.stringMap[variable.toUpperCase()];
         if (entry === undefined) {
             return [
@@ -163,20 +174,20 @@ export class Variables {
                 `STRING VARIABLE ${variable.toUpperCase()} NOT DEFINED`,
             ];
         }
-        return [entry.val.substring(0, entry.curLen), ''];
+        return [entry.val.substring(0, entry.curLen), undefined];
     }
     /**
      * Get a substring of a string variable
      * @param variable String variable to retrieve
      * @param startIndex Starting index
      * @param endIndex Ending index
-     * @returns [Current string based on start/end or undefined if not found, Error if any or '' on success]
+     * @returns [Current string based on start/end or undefined if not found, Error if any or undefined on success]
      */
     public getSubString(
         variable: string,
         startIndex: number,
         endIndex: number
-    ): [string | undefined, string] {
+    ): [string | undefined, ErrMsg] {
         const entry = this.stringMap[variable.toUpperCase()];
         if (entry === undefined) {
             return [
@@ -208,20 +219,20 @@ export class Variables {
                 } FOR STRING VARIABLE ${variable.toUpperCase()}`,
             ];
         }
-        return [entry.val.substring(start + 1, end + 1), ''];
+        return [entry.val.substring(start + 1, end + 1), undefined];
     }
     /**
      * Dimension a string array variable
      * @param variable String Array Variable
      * @param maxLength Maximum length for any entry
      * @param entries Number of entries to create
-     * @returns Error if any or '' on success
+     * @returns Error if any or undefined on success
      */
     public DimStringArray(
         variable: string,
         maxLength: number,
         entries: number
-    ): string {
+    ): ErrMsg {
         const entry = this.stringArrayMap[variable.toUpperCase()];
         if (entry !== undefined) {
             return `STRING ARRAY ${variable.toUpperCase()} PREVIOUSLY DECLARED`;
@@ -239,20 +250,20 @@ export class Variables {
             maxLen: maxLen,
             maxEntries: maxEntries,
         };
-        return '';
+        return undefined;
     }
     /**
      * Set a string array variable
      * @param variable String Array Variable
      * @param index Index into the array to set
      * @param value String to set it to
-     * @returns Error if any or '' on success
+     * @returns Error if any or undefined on success
      */
     public SetStringArray(
         variable: string,
         index: number,
         value: string
-    ): string {
+    ): ErrMsg {
         const entry = this.stringArrayMap[variable.toUpperCase()];
         if (entry === undefined) {
             return `STRING ARRAY VARIABLE ${variable.toUpperCase()} NOT DECLARED`;
@@ -267,18 +278,18 @@ export class Variables {
             value = value.substring(0, entry.maxLen);
         }
         entry.val[idx - 1] = value;
-        return '';
+        return undefined;
     }
     /**
      *
      * @param variable String Array Variable
      * @param index Index into the array to get
-     * @returns [String if found, Error if any or '' on success]
+     * @returns [String if found, Error if any or undefined on success]
      */
     public GetStringArray(
         variable: string,
         index: number
-    ): [string | undefined, string] {
+    ): [string | undefined, ErrMsg] {
         const entry = this.stringArrayMap[variable.toUpperCase()];
         if (entry === undefined) {
             return [
@@ -295,38 +306,38 @@ export class Variables {
                 } FOR STRING ARRAY ${variable.toUpperCase()}`,
             ];
         }
-        return [entry.val[idx], ''];
+        return [entry.val[idx], undefined];
     }
     /**
      * Set a numeric variable
      * @param variable Numeric Variable
      * @param value number to set it to
-     * @returns Error if any or '' on success
+     * @returns Error if any or undefined on success
      */
-    public SetNumericVar(variable: string, value: number): string {
+    public SetNumericVar(variable: string, value: number): ErrMsg {
         this.numberMap[variable.toUpperCase()] = value;
-        return '';
+        return undefined;
     }
     /**
      *
      * @param variable Numeric Variable
-     * @returns [number if found, Error if any or '' on success]
+     * @returns [number if found, Error if any or undefined on success]
      */
-    public GetNumbericVar(variable: string): [number | undefined, string] {
+    public GetNumbericVar(variable: string): [number | undefined, ErrMsg] {
         const entry = this.numberMap[variable.toUpperCase()];
         if (entry === undefined) {
-            return [0, ''];
+            return [0, undefined];
         }
-        return [entry, ''];
+        return [entry, undefined];
     }
     /**
      * Dimension a numeric 1D array
      * @param variable Numeric Array Variable
      * @param maxLength Maximum length for any entry
      * @param entries Number of entries to create
-     * @returns Error if any or '' on success
+     * @returns Error if any or undefined on success
      */
-    public DimNumeric1DArray(variable: string, numRows: number): string {
+    public DimNumeric1DArray(variable: string, numRows: number): ErrMsg {
         let entry = this.numberArrayMap[variable.toUpperCase()];
         let rows = Math.floor(numRows);
         if (rows < 0 || rows > 2000) {
@@ -351,20 +362,20 @@ export class Variables {
             entry.rows = numRows;
             entry.columns = 1;
         }
-        return '';
+        return undefined;
     }
     /**
      * Dimension a numeric 1D array
      * @param variable Numeric Array Variable
      * @param maxLength Maximum length for any entry
      * @param entries Number of entries to create
-     * @returns Error if any or '' on success
+     * @returns Error if any or undefined on success
      */
     public DimNumeric2DArray(
         variable: string,
         numRows: number,
         numColumns: number
-    ): string {
+    ): ErrMsg {
         let entry = this.numberArrayMap[variable.toUpperCase()];
         let rows = Math.floor(numRows);
         let columns = Math.floor(numColumns);
@@ -390,7 +401,7 @@ export class Variables {
             entry.rows = rows;
             entry.columns = columns;
         }
-        return '';
+        return undefined;
     }
     /**
      * Get the location to store a 1D array value (creating one if it doesn't exist)
@@ -400,7 +411,7 @@ export class Variables {
     public get1DLocation(
         variable: string,
         index: number
-    ): [VarNumberArray, number, string] {
+    ): [VarNumberArray, number, ErrMsg] {
         let entry = this.numberArrayMap[variable.toUpperCase()];
         if (entry === undefined) {
             // We assume that it has a dimension of 10 (with a 0 index)
@@ -423,7 +434,7 @@ export class Variables {
                 } FOR NUMBER ARRAY ${variable.toUpperCase()}`,
             ];
         }
-        return [entry, idx, ''];
+        return [entry, idx, undefined];
     }
     /**
      * Get the location to store a 2D array value (creating one if it doesn't exist)
@@ -434,7 +445,7 @@ export class Variables {
         variable: string,
         rowIndex: number,
         colIndex: number
-    ): [VarNumberArray, number, string] {
+    ): [VarNumberArray, number, ErrMsg] {
         let entry = this.numberArrayMap[variable.toUpperCase()];
         if (entry === undefined) {
             const maxEntries = 11 * 11;
@@ -465,22 +476,22 @@ export class Variables {
             ];
         }
         const idx = rowIdx * (entry.columns + 1) + colIdx;
-        return [entry, idx, ''];
+        return [entry, idx, undefined];
     }
     /**
      * Set an element in a 1D numeric array
      * @param variable Numeric Array Variable
      * @param index Index into the array to set
      * @param value number to set it to
-     * @returns Error if any or '' on success
+     * @returns Error if any or undefined on success
      */
     public SetNumeric1DArray(
         variable: string,
         index: number,
         value: number
-    ): string {
+    ): ErrMsg {
         let [entry, idx, msg] = this.get1DLocation(variable, index);
-        if (msg === '') {
+        if (msg === undefined) {
             entry.values[idx] = value;
         }
         return msg;
@@ -490,20 +501,20 @@ export class Variables {
      * @param variable Numeric Array Variable
      * @param index Index into the array to set
      * @param value number to set it to
-     * @returns Error if any or '' on success
+     * @returns Error if any or undefined on success
      */
     public SetNumeric2DArray(
         variable: string,
         rowIndex: number,
         colIndex: number,
         value: number
-    ): string {
+    ): ErrMsg {
         let [entry, idx, msg] = this.get2DLocation(
             variable,
             rowIndex,
             colIndex
         );
-        if (msg === '') {
+        if (msg === undefined) {
             entry.values[idx] = value;
         }
         return msg;
@@ -512,37 +523,37 @@ export class Variables {
      * Get an element from a 1D numeric array
      * @param variable Numeric Array Variable
      * @param index Index into the array to get
-     * @returns [number if found, Error if any or '' on success]
+     * @returns [number if found, Error if any or undefined on success]
      */
     public GetNumeric1DArray(
         variable: string,
         index: number
-    ): [number, string] {
+    ): [number, ErrMsg] {
         let [entry, idx, msg] = this.get1DLocation(variable, index);
-        if (msg !== '') {
+        if (msg !== undefined) {
             return [0, msg];
         }
-        return [entry.values[idx], ''];
+        return [entry.values[idx], undefined];
     }
     /**
      * Get an element from a 2D numeric array
      * @param variable Numeric Array Variable
      * @param index Index into the array to get
-     * @returns [number if found, Error if any or '' on success]
+     * @returns [number if found, Error if any or undefined on success]
      */
     public GetNumeric2DArray(
         variable: string,
         rowIndex: number,
         colIndex: number
-    ): [number, string] {
+    ): [number, ErrMsg] {
         let [entry, idx, msg] = this.get2DLocation(
             variable,
             rowIndex,
             colIndex
         );
-        if (msg !== '') {
+        if (msg !== undefined) {
             return [0, msg];
         }
-        return [entry.values[idx], ''];
+        return [entry.values[idx], undefined];
     }
 }

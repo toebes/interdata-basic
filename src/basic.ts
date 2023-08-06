@@ -37,6 +37,7 @@ import {
     ExprVal,
     SyntaxElem,
     statementLookup,
+    DIMSyntax,
 } from './syntax';
 import { Variables } from './variables';
 
@@ -48,6 +49,12 @@ type ForState = {
     step: number;
     sourceIndex: number;
 };
+type FNState = {
+    var: string;
+    prevVal: number;
+};
+
+type FNDef = {};
 export class Basic {
     protected variables = new Variables();
     protected program = new Program();
@@ -311,7 +318,7 @@ export class Basic {
         let state = this.forStack[nextIndex];
         let [current, emsg] = this.variables.GetNumbericVar(state.var);
 
-        if (emsg !== '') {
+        if (emsg !== undefined) {
             this.programError(emsg);
             return;
         }
@@ -362,7 +369,7 @@ export class Basic {
     private cmdLET(parsed: ParseResult) {
         let varname = parsed.variable as string;
         let isString = parsed.variable_type === Token.STRINGVAR;
-        let emsg = '';
+        let emsg;
 
         if (parsed.index1 === undefined) {
             if (isString) {
@@ -407,7 +414,7 @@ export class Basic {
                 );
             }
         }
-        if (emsg !== '') {
+        if (emsg !== undefined) {
             this.io.WriteLine(emsg);
         }
     }
@@ -470,7 +477,7 @@ export class Basic {
             if (parsed.variable === undefined) {
                 this.programError('SYNTAX ERROR IN DIM STATEMENT');
             }
-            let emsg = '';
+            let emsg;
             let dimvar = parsed.variable as string;
             const dim1 = parsed.index1 as number;
             if (parsed.index2 !== undefined) {
@@ -488,11 +495,18 @@ export class Basic {
                 // 1D Numeric array
                 this.variables.DimNumeric1DArray(dimvar, dim1);
             }
-            if (emsg !== '') {
+            if (emsg !== undefined) {
                 this.programError(emsg);
                 return;
             }
-        } while (parsed.comma !== undefined);
+            if (parsed.endinput === undefined || parsed.comma !== undefined) {
+                parsed = this.Parse(this.tokenizer, DIMSyntax);
+                if (parsed.error !== undefined) {
+                    this.io.WriteLine(parsed.error as string);
+                    return;
+                }
+            }
+        } while (parsed.variable !== undefined);
 
         if (parsed.endinput === undefined) {
             this.programError('SYNTAX ERROR AT END OF DIM STATEMENT');
