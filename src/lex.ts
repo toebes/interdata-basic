@@ -735,7 +735,7 @@ export class Tokenizer {
                     // console.log(
                     //     `Gather check: '${gathered}'+'${char}' action=${newAction}`
                     // );
-                    if (newAction === undefined) {
+                    if (newAction === undefined || char === '') {
                         if (action === TokenAction.GATHER_END) {
                             tokentype = Token.END;
                         } else {
