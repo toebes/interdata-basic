@@ -126,7 +126,7 @@ export const DATASyntax: SyntaxElem[] = [
 export const DEFSyntax: SyntaxElem[] = [
     { tok: Token.FN, val: 'fndef' },
     { tok: Token.LPAREN },
-    { tok: Token.VARIABLE, val: 'parm' },
+    { tok: Token.VARIABLE, val: 'parm', epxtype: 'string' },
     { tok: Token.RPAREN },
     { tok: Token.EQUAL },
 ];
@@ -200,7 +200,7 @@ export const IFSyntax: SyntaxElem[] = [
     {
         optional: [
             { tok: Token.THEN },
-            { tok: Token.EXPRESSION, val: 'linenum', epxtype: 'numeric' },
+            { tok: Token.NUMBER, val: 'linenum', epxtype: 'numeric' },
             { tok: Token.ENDINPUT },
         ],
     },
