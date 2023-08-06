@@ -35,6 +35,7 @@ export type SyntaxElem = {
     oneof?: SyntaxElem[];
     optional?: SyntaxElem[];
     include?: SyntaxElem[];
+    needed?: boolean;
 };
 export type SyntaxLookup = Partial<Record<Token, SyntaxElem[]>>;
 
@@ -274,7 +275,10 @@ export const ONSyntax: SyntaxElem[] = [
 
 // Print [ON (<unit>)] <expr> [,|;]?
 export const PRINTVarSyntax: SyntaxElem[] = [
+    { val: 'end', optional: [{ tok: Token.ENDINPUT, val: 'endinput' }] },
     {
+        val: 'end',
+        needed: true,
         optional: [
             {
                 val: 'printitem',
@@ -287,13 +291,13 @@ export const PRINTVarSyntax: SyntaxElem[] = [
             },
             {
                 val: 'printitem',
+                needed: true,
                 optional: [{ tok: Token.EXPRESSION, val: 'expression' }],
             },
             { val: 'sep', optional: [{ tok: Token.COMMA, val: 'comma' }] },
             { val: 'sep', optional: [{ tok: Token.SEMI, val: 'semi' }] },
         ],
     },
-    { optional: [{ tok: Token.ENDINPUT, val: 'endinput' }] },
 ];
 export const PRINTSyntax: SyntaxElem[] = [
     { include: ONUNITSyntax },

@@ -823,7 +823,7 @@ export class Basic {
                 ) {
                     const saveState = source.saveState();
                     let subData = this.Parse(source, syntaxElem.optional);
-                    if (subData['error'] === undefined) {
+                    if (subData['error'] === undefined || syntaxElem.needed) {
                         result = { ...result, ...subData };
                         if (syntaxElem.val !== undefined) {
                             result[syntaxElem.val] = '1';
