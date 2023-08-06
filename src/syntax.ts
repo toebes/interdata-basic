@@ -28,7 +28,9 @@ import { Token, Tokenizer } from './lex';
  * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-export type ParseResult = { [id: string]: string };
+export type ExprVal = string | number;
+export type ParseResult = { [id: string]: ExprVal };
+export type ExpType = 'numeric' | 'string';
 export type SyntaxElem = {
     tok?: Token;
     val?: string;
@@ -36,6 +38,7 @@ export type SyntaxElem = {
     optional?: SyntaxElem[];
     include?: SyntaxElem[];
     needed?: boolean;
+    epxtype?: ExpType;
 };
 export type SyntaxLookup = Partial<Record<Token, SyntaxElem[]>>;
 
@@ -45,11 +48,15 @@ export const VariableRefSyntax: SyntaxElem[] = [
     {
         optional: [
             { tok: Token.LPAREN },
-            { tok: Token.EXPRESSION, val: 'index1' },
+            { tok: Token.EXPRESSION, val: 'index1', epxtype: 'numeric' },
             {
                 optional: [
                     { tok: Token.COMMA },
-                    { tok: Token.EXPRESSION, val: 'index2' },
+                    {
+                        tok: Token.EXPRESSION,
+                        val: 'index2',
+                        epxtype: 'numeric',
+                    },
                 ],
             },
             { tok: Token.RPAREN },
@@ -62,7 +69,7 @@ export const ONUNITSyntax: SyntaxElem[] = [
         optional: [
             { tok: Token.ON },
             { tok: Token.LPAREN },
-            { tok: Token.EXPRESSION, val: 'unit' },
+            { tok: Token.EXPRESSION, val: 'unit', epxtype: 'numeric' },
             { tok: Token.RPAREN },
         ],
     },
@@ -76,11 +83,11 @@ export const LOGICALUNITSyntax: SyntaxElem[] = [
 export const STARTTOENDSyntax: SyntaxElem[] = [
     {
         optional: [
-            { tok: Token.EXPRESSION, val: 'start' },
+            { tok: Token.EXPRESSION, val: 'start', epxtype: 'numeric' },
             {
                 optional: [
                     { tok: Token.TO },
-                    { tok: Token.EXPRESSION, val: 'end' },
+                    { tok: Token.EXPRESSION, val: 'end', epxtype: 'numeric' },
                 ],
             },
         ],
@@ -94,7 +101,7 @@ export const BSPSyntax = LOGICALUNITSyntax;
 
 // CALL number [, expression]
 export const CALLSyntax: SyntaxElem[] = [
-    { tok: Token.EXPRESSION, val: 'subroutineID' },
+    { tok: Token.EXPRESSION, val: 'subroutineID', epxtype: 'numeric' },
 ];
 
 export const CALLParmSyntax: SyntaxElem[] = [
@@ -126,19 +133,22 @@ export const DEFSyntax: SyntaxElem[] = [
 
 // DIM variable(<bounds1> [, <bounds2>])[,variable(<bounds1> [, <bounds2>])]*
 export const DIMSyntax: SyntaxElem[] = [
-    //{ tok: Token.VARIABLE, val: 'var' },
-    { include: VariableRefSyntax },
+    { tok: Token.VARIABLE, val: 'variable' },
     { tok: Token.LPAREN },
-    { tok: Token.EXPRESSION, val: 'bounds1' },
+    { tok: Token.EXPRESSION, val: 'index1', epxtype: 'numeric' },
     {
         optional: [
             { tok: Token.COMMA },
-            { tok: Token.EXPRESSION, val: 'bounds2' },
+            { tok: Token.EXPRESSION, val: 'index2', epxtype: 'numeric' },
         ],
     },
     { tok: Token.RPAREN },
-    { optional: [{ tok: Token.COMMA, val: 'comma' }] },
-    { optional: [{ tok: Token.ENDINPUT, val: 'endinput' }] },
+    { val: 'end', optional: [{ tok: Token.COMMA, val: 'comma' }] },
+    {
+        val: 'end',
+        needed: true,
+        optional: [{ tok: Token.ENDINPUT, val: 'endinput' }],
+    },
 ];
 
 // END
@@ -151,22 +161,27 @@ export const ENDTRACESyntax = NOPARAMS;
 export const FORSyntax: SyntaxElem[] = [
     { tok: Token.VARIABLE, val: 'var' },
     { tok: Token.EQUAL },
-    { tok: Token.EXPRESSION, val: 'start' },
+    { tok: Token.EXPRESSION, val: 'start', epxtype: 'numeric' },
     { tok: Token.TO },
-    { tok: Token.EXPRESSION, val: 'end' },
-    { optional: [{ tok: Token.STEP }, { tok: Token.EXPRESSION, val: 'step' }] },
+    { tok: Token.EXPRESSION, val: 'end', epxtype: 'numeric' },
+    {
+        optional: [
+            { tok: Token.STEP },
+            { tok: Token.EXPRESSION, val: 'step', epxtype: 'numeric' },
+        ],
+    },
     { tok: Token.ENDINPUT },
 ];
 
 // GOSUB <line>
 export const GOSUBSyntax: SyntaxElem[] = [
-    { tok: Token.EXPRESSION, val: 'line' },
+    { tok: Token.EXPRESSION, val: 'line', epxtype: 'numeric' },
     { tok: Token.ENDINPUT },
 ];
 
 // GOTO <line>
 export const GOTOSyntax: SyntaxElem[] = [
-    { tok: Token.EXPRESSION, val: 'line' },
+    { tok: Token.EXPRESSION, val: 'line', epxtype: 'numeric' },
     { tok: Token.ENDINPUT },
 ];
 
@@ -174,18 +189,18 @@ export const GOTOSyntax: SyntaxElem[] = [
 // IF <expr> THEN <number>
 // IF <expr> THEN <statement>
 export const IFSyntax: SyntaxElem[] = [
-    { tok: Token.EXPRESSION, val: 'expr' },
+    { tok: Token.EXPRESSION, val: 'expr', epxtype: 'numeric' },
     {
         optional: [
             { tok: Token.GOTO },
-            { tok: Token.NUMBER, val: 'linenum' },
+            { tok: Token.EXPRESSION, val: 'linenum', epxtype: 'numeric' },
             { tok: Token.ENDINPUT },
         ],
     },
     {
         optional: [
             { tok: Token.THEN },
-            { tok: Token.NUMBER, val: 'linenum' },
+            { tok: Token.EXPRESSION, val: 'linenum', epxtype: 'numeric' },
             { tok: Token.ENDINPUT },
         ],
     },
@@ -198,11 +213,15 @@ export const INPUTSyntax: SyntaxElem[] = [
         optional: [
             { tok: Token.ON },
             { tok: Token.LPAREN },
-            { tok: Token.EXPRESSION, val: 'unit' },
+            { tok: Token.EXPRESSION, val: 'unit', epxtype: 'numeric' },
             {
                 optional: [
                     { tok: Token.COMMA },
-                    { tok: Token.EXPRESSION, val: 'record' },
+                    {
+                        tok: Token.EXPRESSION,
+                        val: 'record',
+                        epxtype: 'numeric',
+                    },
                 ],
             },
             { tok: Token.RPAREN },
@@ -233,39 +252,44 @@ export const NEXTSyntax: SyntaxElem[] = [
 //
 export const ONSyntax: SyntaxElem[] = [
     {
+        val: 'on',
         optional: [
-            { tok: Token.EXPRESSION, val: 'expression' },
+            { tok: Token.EXPRESSION, val: 'expression', epxtype: 'numeric' },
             { tok: Token.GOTO, val: 'onaction' },
-            { tok: Token.EXPRESSION, val: 'target' },
+            { tok: Token.EXPRESSION, val: 'target', epxtype: 'numeric' },
         ],
     },
     {
+        val: 'on',
         optional: [
-            { tok: Token.EXPRESSION, val: 'expression' },
+            { tok: Token.EXPRESSION, val: 'expression', epxtype: 'numeric' },
             { tok: Token.THEN, val: 'onaction' },
-            { tok: Token.EXPRESSION, val: 'target' },
+            { tok: Token.EXPRESSION, val: 'target', epxtype: 'numeric' },
         ],
     },
     {
+        val: 'on',
         optional: [
-            { tok: Token.EXPRESSION, val: 'expression' },
+            { tok: Token.EXPRESSION, val: 'expression', epxtype: 'numeric' },
             { tok: Token.GOSUB, val: 'onaction' },
-            { tok: Token.EXPRESSION, val: 'target' },
+            { tok: Token.EXPRESSION, val: 'target', epxtype: 'numeric' },
         ],
     },
     {
+        val: 'on',
         optional: [
             { tok: Token.ERROR, val: 'onerror' },
             { tok: Token.GOTO },
-            { tok: Token.EXPRESSION, val: 'target' },
+            { tok: Token.EXPRESSION, val: 'target', epxtype: 'numeric' },
             { tok: Token.ENDINPUT },
         ],
     },
     {
+        val: 'on',
         optional: [
             { tok: Token.ERROR, val: 'onerror' },
             { tok: Token.THEN },
-            { tok: Token.EXPRESSION, val: 'target' },
+            { tok: Token.EXPRESSION, val: 'target', epxtype: 'numeric' },
             { tok: Token.ENDINPUT },
         ],
     },
@@ -285,7 +309,7 @@ export const PRINTVarSyntax: SyntaxElem[] = [
                 optional: [
                     { tok: Token.TAB },
                     { tok: Token.LPAREN },
-                    { tok: Token.EXPRESSION, val: 'tab' },
+                    { tok: Token.EXPRESSION, val: 'tab', epxtype: 'numeric' },
                     { tok: Token.RPAREN },
                 ],
             },
@@ -296,6 +320,8 @@ export const PRINTVarSyntax: SyntaxElem[] = [
             },
             { val: 'sep', optional: [{ tok: Token.COMMA, val: 'comma' }] },
             { val: 'sep', optional: [{ tok: Token.SEMI, val: 'semi' }] },
+
+            { optional: [{ tok: Token.ENDINPUT, val: 'endinput' }] },
         ],
     },
 ];
@@ -304,7 +330,7 @@ export const PRINTSyntax: SyntaxElem[] = [
     {
         optional: [
             { tok: Token.USING },
-            { tok: Token.EXPRESSION, val: 'using' },
+            { tok: Token.EXPRESSION, val: 'using', epxtype: 'string' },
             { tok: Token.COMMA },
         ],
     },
@@ -357,18 +383,22 @@ export const NEWSyntax = NOPARAMS;
 
 // RUN [<statement>]
 export const RUNSyntax: SyntaxElem[] = [
-    { optional: [{ tok: Token.EXPRESSION, val: 'line' }] },
+    { optional: [{ tok: Token.EXPRESSION, val: 'line', epxtype: 'numeric' }] },
     { tok: Token.ENDINPUT },
 ];
 // RENUM [<start>[,<increment>]]
 export const RENUMSyntax: SyntaxElem[] = [
     {
         optional: [
-            { tok: Token.EXPRESSION, val: 'start' },
+            { tok: Token.EXPRESSION, val: 'start', epxtype: 'numeric' },
             {
                 optional: [
                     { tok: Token.COMMA },
-                    { tok: Token.EXPRESSION, val: 'increment' },
+                    {
+                        tok: Token.EXPRESSION,
+                        val: 'increment',
+                        epxtype: 'numeric',
+                    },
                 ],
             },
         ],

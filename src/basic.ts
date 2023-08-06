@@ -30,9 +30,11 @@ import { IO } from './io';
 import { Token, Tokenizer } from './lex';
 import { MAXLINE, Program } from './program';
 import {
+    ExpType,
     LETSyntax,
     PRINTVarSyntax,
     ParseResult,
+    ExprVal,
     SyntaxElem,
     statementLookup,
 } from './syntax';
@@ -70,6 +72,7 @@ export class Basic {
             [Token.ENDTRACE]: this.cmdENDTRACE.bind(this),
             [Token.SETTRACE]: this.cmdSETTRACE.bind(this),
             [Token.PRINT]: this.cmdPRINT.bind(this),
+            [Token.DIM]: this.cmdDIM.bind(this),
         };
 
     public async doRun() {
@@ -212,7 +215,7 @@ export class Basic {
             this.programError('PRINT USING NOT YET SUPPORTED');
             return;
         }
-        let logicalUnit = this.io.GetUnit(parsed.unit);
+        let logicalUnit = this.io.GetUnit(parsed.unit as number);
         while (parsed.printitem !== undefined) {
             let out = '';
             if (parsed.tab !== undefined) {
@@ -224,10 +227,10 @@ export class Basic {
                 ) {
                     out = ' '.repeat(tabpos - 1 - logicalUnit.tabPos);
                 }
-            } else if (!this.isNumber(parsed.expression)) {
-                out = parsed.expression;
+            } else if (typeof parsed.expression === 'number') {
+                out = this.formatNumber(parsed.expression);
             } else {
-                out = this.formatNumber(Number(parsed.expression));
+                out = parsed.expression;
             }
             // If it won't fit on the line we put it on the next one
             if (logicalUnit.tabPos + out.length > MAXOUTPUTLINE) {
@@ -253,7 +256,7 @@ export class Basic {
             parsed = this.Parse(this.tokenizer, PRINTVarSyntax);
         }
         // IF we didn't get all the way to the end of the print line, something is wrong
-        if (!parsed.endinput) {
+        if (parsed.endinput === undefined) {
             this.programError('SYNTAX ERROR');
         }
     }
@@ -279,16 +282,17 @@ export class Basic {
             return;
         }
         let step = 1;
-        if (parsed.step !== undefined) {
-            step = Number(parsed.step);
+        if (parsed.step !== undefined && typeof parsed.step === 'number') {
+            step = parsed.step;
         }
+        let forvar = parsed.var as string;
         this.forStack.push({
-            var: parsed.var,
-            end: Number(parsed.end),
+            var: forvar,
+            end: parsed.end as number,
             step: step,
             sourceIndex: this.runSourceIndex,
         });
-        this.variables.SetNumericVar(parsed.var, Number(parsed.start));
+        this.variables.SetNumericVar(forvar, parsed.start as number);
     }
     /**
      * Next
@@ -340,10 +344,7 @@ export class Basic {
      */
     private cmdLET(parsed: ParseResult) {
         let varname = parsed.variable as string;
-        let isString = false;
-        if (varname.substring(varname.length - 1) === '$') {
-            isString = true;
-        }
+        let isString = parsed.variable_type === Token.STRINGVAR;
         let emsg = '';
 
         if (parsed.index1 === undefined) {
@@ -417,9 +418,9 @@ export class Basic {
             }
         }
 
-        let unit: string | undefined;
+        let unit: number | undefined;
         if (parsed.unit !== undefined) {
-            unit = parsed.unit;
+            unit = parsed.unit as number;
         }
         const source = this.program.List(firstLine, lastLine);
         source.forEach((sourceLine) => {
@@ -447,7 +448,42 @@ export class Basic {
         this.isRunning = true;
         this.doRun();
     }
+    private cmdDIM(parsed: ParseResult) {
+        do {
+            if (parsed.variable === undefined) {
+                this.programError('SYNTAX ERROR IN DIM STATEMENT');
+            }
+            let emsg = '';
+            let dimvar = parsed.variable as string;
+            const dim1 = parsed.index1 as number;
+            if (parsed.index2 !== undefined) {
+                const dim2 = parsed.index2 as number;
+                if (parsed.variable_type === Token.STRINGVAR) {
+                    // String array
+                    emsg = this.variables.DimStringArray(dimvar, dim1, dim2);
+                } else {
+                    emsg = this.variables.DimNumeric2DArray(dimvar, dim1, dim2);
+                }
+            } else if (parsed.variable_type === Token.STRINGVAR) {
+                // Normal string
+                emsg = this.variables.DimString(dimvar, dim1);
+            } else {
+                // 1D Numeric array
+                this.variables.DimNumeric1DArray(dimvar, dim1);
+            }
+            if (emsg !== '') {
+                this.programError(emsg);
+                return;
+            }
+        } while (parsed.comma !== undefined);
 
+        if (parsed.endinput === undefined) {
+            this.programError('SYNTAX ERROR AT END OF DIM STATEMENT');
+        }
+    }
+    /**************************************************************************************************************
+     *
+     */
     public Break() {
         this.io.WriteLine('*BREAK*');
     }
@@ -465,7 +501,23 @@ export class Basic {
         source.restoreState(saveState);
         return Token.INVALID;
     }
-    public EvalExpression1(source: Tokenizer): [string, string | undefined] {
+    public CheckType(
+        val: ExprVal,
+        emsg: string | undefined,
+        expType?: ExpType,
+        chkmsg?: string
+    ): [ExprVal, string | undefined] {
+        if (expType === 'numeric' && typeof val !== 'number') {
+            if (val === '') {
+                return [val, `ERROR: EXPECTING NUMERIC TYPE`];
+            }
+            return [val, `ERROR '${val}' NOT NUMERIC TYPE`];
+        } else if (expType === 'string' && typeof val !== 'string') {
+            return [val, `ERROR '${val}' NOT STRING TYPE`];
+        }
+        return [val, emsg];
+    }
+    public EvalExpression1(source: Tokenizer): [ExprVal, string | undefined] {
         const tokenMatch = [
             Token.NUMBER,
             Token.STRING,
@@ -495,6 +547,28 @@ export class Basic {
             Token.FN,
         ];
 
+        const FunctionExpressionType: { [key in Token]?: ExpType } = {
+            [Token.SIN]: 'numeric',
+            [Token.COS]: 'numeric',
+            [Token.TAN]: 'numeric',
+            [Token.ATN]: 'numeric',
+            [Token.LOG]: 'numeric',
+            [Token.EXP]: 'numeric',
+            [Token.SQR]: 'numeric',
+            [Token.ABS]: 'numeric',
+            [Token.INT]: 'numeric',
+            [Token.RND]: 'numeric',
+            [Token.NOT]: 'numeric',
+            [Token.SGN]: 'numeric',
+            [Token.LEN]: 'string',
+            //[ Token.EOF]: 'numeric',
+            [Token.VAL]: 'numeric',
+            [Token.STRSTRING]: 'numeric',
+            //[ Token.ERRSTRING]: 'numeric',
+            //[ Token.ERL]: 'numeric',
+            [Token.FN]: 'numeric',
+        };
+
         const [tokenstr, token] = source.getToken();
         if (!tokenMatch.includes(token)) {
             if (!tokenFuncMatch.includes(token)) {
@@ -508,59 +582,71 @@ export class Basic {
                 return [tokenstr, `SYNTAX ERROR - MISSING (`];
             }
             let [value, emsg] = this.EvalExpression(source);
+            [value, emsg] = this.CheckType(
+                value,
+                emsg,
+                FunctionExpressionType[token],
+                ''
+            );
             if (emsg !== undefined) {
                 return [value, emsg];
             }
             if (!this.MatchToken(source, [Token.RPAREN])) {
                 return [value, `SYNTAX ERROR - MISSING )`];
             }
+            let numval = 0;
+            let strval = '';
+            if (typeof value === 'number') {
+                numval = value;
+            } else {
+                strval = value;
+            }
             // We have the data, now process the function
             switch (token) {
                 case Token.SIN:
-                    value = String(Math.sin(Number(value)));
+                    value = Math.sin(numval);
                     break;
                 case Token.COS:
-                    value = String(Math.cos(Number(value)));
+                    value = Math.cos(numval);
                     break;
                 case Token.TAN:
-                    value = String(Math.tan(Number(value)));
+                    value = Math.tan(numval);
                     break;
                 case Token.ATN:
-                    value = String(Math.atan(Number(value)));
+                    value = Math.atan(numval);
                     break;
                 case Token.LOG:
-                    value = String(Math.log(Number(value)));
+                    value = Math.log(numval);
                     break;
                 case Token.EXP:
-                    value = String(Math.exp(Number(value)));
+                    value = Math.exp(numval);
                     break;
                 case Token.SQR:
-                    value = String(Math.sqrt(Number(value)));
+                    value = Math.sqrt(numval);
                     break;
                 case Token.ABS:
-                    value = String(Math.abs(Number(value)));
+                    value = Math.abs(numval);
                     break;
                 case Token.INT:
-                    value = String(Math.trunc(Number(value)));
+                    value = Math.trunc(numval);
                     break;
                 case Token.RND:
-                    value = String(Math.random());
+                    value = Math.random();
                     break;
                 case Token.NOT:
-                    value = String(!value);
+                    value = Number(!value);
                     break;
                 case Token.SGN:
-                    let num = Number(value);
-                    value = num < 0 ? '-1' : num === 0 ? '0' : '1';
-                    break;
-                case Token.LEN:
-                    value = String(value.length);
+                    value = numval < 0 ? -1 : numval === 0 ? 0 : 1;
                     break;
                 case Token.EOF:
-                    value = this.io.isEOF() ? '1' : '0';
+                    value = this.io.isEOF() ? 1 : 0;
+                    break;
+                case Token.LEN:
+                    value = strval.length;
                     break;
                 case Token.VAL:
-                    value = String(Number(value));
+                    value = String(numval);
                     break;
                 case Token.STRSTRING:
                     break;
@@ -568,7 +654,7 @@ export class Basic {
                     value = this.lastErrorString;
                     break;
                 case Token.ERL:
-                    value = String(this.lastErrorLine);
+                    value = this.lastErrorLine;
                     break;
                 case Token.FN:
                     return [value, `FN NOT YET IMPLEMENTED`];
@@ -577,6 +663,7 @@ export class Basic {
         }
         switch (token) {
             case Token.NUMBER:
+                return [Number(tokenstr), undefined];
             case Token.STRING:
                 return [tokenstr, undefined];
             case Token.LPAREN:
@@ -599,7 +686,11 @@ export class Basic {
                 } else {
                     // Simple variable
                     if (token == Token.STRINGVAR) {
-                        return this.variables.getString(tokenstr);
+                        let [val, emsg] = this.variables.getString(tokenstr);
+                        if (emsg === '') {
+                            return [val, undefined];
+                        }
+                        return [val, emsg];
                     }
                     let [numval, emsg] =
                         this.variables.GetNumbericVar(tokenstr);
@@ -607,50 +698,63 @@ export class Basic {
                         numval = 0;
                     }
                     if (emsg === '') {
-                        return [String(numval), undefined];
+                        return [numval, undefined];
                     }
-                    return [String(numval), emsg];
+                    return [numval, emsg];
                 }
         }
         return ['0', 'UNRECOGNIZED TOKEN'];
     }
 
-    public EvalExpression2(source: Tokenizer): [string, string | undefined] {
+    public EvalExpression2(source: Tokenizer): [ExprVal, string | undefined] {
         const token = this.MatchToken(source, [Token.PLUS, Token.MINUS]);
         let [value, emsg] = this.EvalExpression1(source);
         if (emsg !== undefined) {
             return [value, emsg];
         }
         if (token === Token.MINUS) {
-            value = String(-Number(value));
+            [value, emsg] = this.CheckType(value, emsg, 'numeric', '');
+            if (typeof value === 'number') {
+                value = -value;
+            }
         }
         return [value, undefined];
     }
 
-    public EvalExpression3(source: Tokenizer): [string, string | undefined] {
+    public EvalExpression3(source: Tokenizer): [ExprVal, string | undefined] {
         let [value, emsg] = this.EvalExpression2(source);
         if (emsg !== undefined) {
             return [value, emsg];
         }
         const token = this.MatchToken(source, [Token.CARET]);
         if (token !== Token.INVALID) {
-            const [value2, emsg2] = this.EvalExpression3(source);
+            [value, emsg] = this.CheckType(value, emsg, 'numeric', '');
+            if (emsg !== undefined) {
+                return [value, emsg];
+            }
+            let [value2, emsg2] = this.EvalExpression3(source);
+            [value2, emsg2] = this.CheckType(value2, emsg2, 'numeric', '');
             if (emsg2 !== undefined) {
                 return [value2, emsg2];
             }
             // Evaluate the expression
-            value = String(Math.pow(Number(value), Number(value2)));
+            value = Math.pow(value as number, value2 as number);
         }
         return [value, undefined];
     }
-    public EvalExpression4(source: Tokenizer): [string, string | undefined] {
+    public EvalExpression4(source: Tokenizer): [ExprVal, string | undefined] {
         let [value, emsg] = this.EvalExpression3(source);
         if (emsg !== undefined) {
             return [value, emsg];
         }
         const token = this.MatchToken(source, [Token.STAR, Token.SLASH]);
         if (token !== Token.INVALID) {
-            const [value2, emsg2] = this.EvalExpression4(source);
+            [value, emsg] = this.CheckType(value, emsg, 'numeric', '');
+            if (emsg !== undefined) {
+                return [value, emsg];
+            }
+            let [value2, emsg2] = this.EvalExpression4(source);
+            [value2, emsg2] = this.CheckType(value2, emsg2, 'numeric', '');
             if (emsg2 !== undefined) {
                 return [value2, emsg2];
             }
@@ -666,31 +770,36 @@ export class Basic {
         }
         return [value, undefined];
     }
-    public EvalExpression5(source: Tokenizer): [string, string | undefined] {
+    public EvalExpression5(source: Tokenizer): [ExprVal, string | undefined] {
         let [value, emsg] = this.EvalExpression4(source);
         if (emsg !== undefined) {
             return [value, emsg];
         }
         const token = this.MatchToken(source, [Token.PLUS, Token.MINUS]);
         if (token !== Token.INVALID) {
-            const [value2, emsg2] = this.EvalExpression5(source);
+            [value, emsg] = this.CheckType(value, emsg, 'numeric', '');
+            if (emsg !== undefined) {
+                return [value, emsg];
+            }
+            let [value2, emsg2] = this.EvalExpression5(source);
+            [value2, emsg2] = this.CheckType(value2, emsg2, 'numeric', '');
             if (emsg2 !== undefined) {
                 return [value2, emsg2];
             }
             // Evaluate the expression
             switch (token) {
                 case Token.PLUS:
-                    value = String(Number(value) + Number(value2));
+                    value = (value as number) + (value2 as number);
                     break;
                 case Token.MINUS:
-                    value = String(Number(value) - Number(value2));
+                    value = (value as number) - (value2 as number);
                     break;
             }
         }
         return [value, undefined];
     }
 
-    public EvalExpression6(source: Tokenizer): [string, string | undefined] {
+    public EvalExpression6(source: Tokenizer): [ExprVal, string | undefined] {
         let [value, emsg] = this.EvalExpression5(source);
         if (emsg !== undefined) {
             return [value, emsg];
@@ -710,37 +819,42 @@ export class Basic {
             // Evaluate the expression
             switch (token) {
                 case Token.EQUAL:
-                    value = value == value2 ? '1' : '0';
+                    value = value == value2 ? 1 : 0;
                     break;
                 case Token.LESS:
-                    value = value < value2 ? '1' : '0';
+                    value = value < value2 ? 1 : 0;
                     break;
                 case Token.GREATER:
-                    value = value > value2 ? '1' : '0';
+                    value = value > value2 ? 1 : 0;
                     break;
                 case Token.GREATEREQUAL:
-                    value = value >= value2 ? '1' : '0';
+                    value = value >= value2 ? 1 : 0;
                     break;
                 case Token.NOTEQUAL:
-                    value = value != value2 ? '1' : '0';
+                    value = value != value2 ? 1 : 0;
                     break;
             }
         }
         return [value, undefined];
     }
-    public EvalExpression7(source: Tokenizer): [string, string | undefined] {
+    public EvalExpression7(source: Tokenizer): [ExprVal, string | undefined] {
         let [value, emsg] = this.EvalExpression6(source);
         if (emsg !== undefined) {
             return [value, emsg];
         }
         const token = this.MatchToken(source, [Token.AND]);
         if (token == Token.AND) {
-            const [value2, emsg2] = this.EvalExpression7(source);
+            [value, emsg] = this.CheckType(value, emsg, 'numeric', '');
+            if (emsg !== undefined) {
+                return [value, emsg];
+            }
+            let [value2, emsg2] = this.EvalExpression7(source);
+            [value2, emsg2] = this.CheckType(value2, emsg2, 'numeric', '');
             if (emsg2 !== undefined) {
                 return [value2, emsg2];
             }
             // Evaluate the AND
-            value = String(!!Number(value) && !!Number(value2));
+            value = (value as number) && (value2 as number) ? 1 : 0;
         }
         return [value, undefined];
     }
@@ -749,19 +863,24 @@ export class Basic {
      * @param source
      * @returns
      */
-    public EvalExpression(source: Tokenizer): [string, string | undefined] {
+    public EvalExpression(source: Tokenizer): [ExprVal, string | undefined] {
         let [value, emsg] = this.EvalExpression7(source);
         if (emsg !== undefined) {
             return [value, emsg];
         }
         const token = this.MatchToken(source, [Token.OR]);
         if (token == Token.OR) {
-            const [value2, emsg2] = this.EvalExpression(source);
+            [value, emsg] = this.CheckType(value, emsg, 'numeric', '');
+            if (emsg !== undefined) {
+                return [value, emsg];
+            }
+            let [value2, emsg2] = this.EvalExpression(source);
+            [value2, emsg2] = this.CheckType(value2, emsg2, 'numeric', '');
             if (emsg2 !== undefined) {
                 return [value2, emsg2];
             }
             // Evaluate the OR
-            value = String(!!Number(value) || !!Number(value2));
+            value = (value as number) || (value2 as number) ? 1 : 0;
         }
         return [value, undefined];
     }
@@ -775,11 +894,19 @@ export class Basic {
         let result: ParseResult = {};
         for (let syntaxElem of syntax) {
             if (syntaxElem.tok !== undefined) {
-                let tokenstr = '';
+                let tokenstr: ExprVal = '';
                 let token = Token.INVALID;
                 if (syntaxElem.tok === Token.EXPRESSION) {
                     let emsg = undefined;
                     [tokenstr, emsg] = this.EvalExpression(source);
+                    if (syntaxElem.epxtype !== undefined) {
+                        [tokenstr, emsg] = this.CheckType(
+                            tokenstr,
+                            emsg,
+                            syntaxElem.epxtype,
+                            ''
+                        );
+                    }
 
                     if (emsg !== undefined) {
                         result['error'] = emsg;
@@ -795,6 +922,9 @@ export class Basic {
                         token === Token.STRINGVAR &&
                         syntaxElem.tok === Token.VARIABLE
                     ) {
+                        if (syntaxElem.val !== undefined) {
+                            result[syntaxElem.val + '_type'] = Token.STRINGVAR;
+                        }
                         token = Token.VARIABLE;
                     }
                     if (token !== syntaxElem.tok) {
