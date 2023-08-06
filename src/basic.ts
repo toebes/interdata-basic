@@ -39,7 +39,7 @@ import {
     statementLookup,
     DIMSyntax,
 } from './syntax';
-import { Variables } from './variables';
+import { ErrMsg, Variables } from './variables';
 
 const TABSTOP = 14;
 const MAXOUTPUTLINE = 132;
@@ -49,12 +49,7 @@ type ForState = {
     step: number;
     sourceIndex: number;
 };
-type FNState = {
-    var: string;
-    prevVal: number;
-};
 
-type FNDef = {};
 export class Basic {
     protected variables = new Variables();
     protected program = new Program();
@@ -66,6 +61,7 @@ export class Basic {
     protected isTracing = false;
     protected runSourceIndex = 0;
     protected forStack: ForState[] = [];
+    protected fnInUse: { [id: string]: boolean } = {};
 
     protected cmdLookup: Partial<Record<Token, (parsed: ParseResult) => void>> =
         {
@@ -81,6 +77,7 @@ export class Basic {
             [Token.PRINT]: this.cmdPRINT.bind(this),
             [Token.DIM]: this.cmdDIM.bind(this),
             [Token.GOTO]: this.cmdGOTO.bind(this),
+            [Token.DEF]: this.cmdDEF.bind(this),
         };
 
     public async doRun() {
@@ -150,6 +147,7 @@ export class Basic {
     private cmdNEW(parsed: ParseResult) {
         this.program.EraseRange(0, MAXLINE);
         this.variables.New();
+        this.fnInUse = {};
     }
     public programError(msg: string) {
         // See if we have an ON ERROR in effect first
@@ -466,6 +464,7 @@ export class Basic {
             this.runSourceIndex = spot;
         } else {
             this.variables.New();
+            this.fnInUse = {};
             this.runSourceIndex = 0;
             this.forStack = [];
         }
@@ -512,6 +511,18 @@ export class Basic {
             this.programError('SYNTAX ERROR AT END OF DIM STATEMENT');
         }
     }
+    private cmdDEF(parsed: ParseResult) {
+        const parm = parsed.parm as string;
+        const fndef = parsed.fndef as string;
+        const definition = this.tokenizer.getRemainder();
+
+        if (parm.length !== 1) {
+            this.programError(
+                `FUNCTION '${fndef} PARAMETER ${parm} NOT A SINGLE LETTER`
+            );
+        }
+        this.variables.DefFN(fndef, parm, definition);
+    }
     /**************************************************************************************************************
      *
      **************************************************************************************************************/
@@ -540,7 +551,7 @@ export class Basic {
         emsg: string | undefined,
         expType?: ExpType,
         chkmsg?: string
-    ): [ExprVal, string | undefined] {
+    ): [ExprVal, ErrMsg] {
         if (expType === 'numeric' && typeof val !== 'number') {
             if (val === '') {
                 return [val, `ERROR: EXPECTING NUMERIC TYPE`];
@@ -554,7 +565,30 @@ export class Basic {
     /**************************************************************************************************************
      *  EXPRESSION PARSER ROUTINES
      **************************************************************************************************************/
-    public EvalExpression1(source: Tokenizer): [ExprVal, string | undefined] {
+    public EvalFN(fn: string, numval: number): [ExprVal, ErrMsg] {
+        let fnDef = this.variables.GetFN(fn);
+        if (fnDef === undefined) {
+            return [0, `FUNCTION ${fn} NOT DEFINED`];
+        }
+        if (this.fnInUse[fn] !== undefined) {
+            return [0, `FUNCTION ${fn} CALLED RECURSIVELY`];
+        }
+        const tokenizer = new Tokenizer();
+        let [oldval, oldmsg] = this.variables.GetNumbericVar(fnDef.parm);
+        this.variables.SetNumericVar(fnDef.parm, numval);
+        tokenizer.setLine(fnDef.def);
+        this.fnInUse[fn] = true;
+        let [value, emsg] = this.EvalExpression(tokenizer);
+        delete this.fnInUse[fn];
+
+        if (oldval === undefined) {
+            oldval = 0;
+        }
+        this.variables.SetNumericVar(fnDef.parm, oldval);
+        return [value, emsg];
+    }
+
+    public EvalExpression1(source: Tokenizer): [ExprVal, ErrMsg] {
         const tokenMatch = [
             Token.NUMBER,
             Token.STRING,
@@ -694,7 +728,7 @@ export class Basic {
                     value = this.lastErrorLine;
                     break;
                 case Token.FN:
-                    return [value, `FN NOT YET IMPLEMENTED`];
+                    return this.EvalFN(tokenstr, numval);
             }
             return [value, undefined];
         }
@@ -743,7 +777,7 @@ export class Basic {
         return ['0', 'UNRECOGNIZED TOKEN'];
     }
 
-    public EvalExpression2(source: Tokenizer): [ExprVal, string | undefined] {
+    public EvalExpression2(source: Tokenizer): [ExprVal, ErrMsg] {
         const token = this.MatchToken(source, [Token.PLUS, Token.MINUS]);
         let [value, emsg] = this.EvalExpression1(source);
         if (emsg !== undefined) {
@@ -758,7 +792,7 @@ export class Basic {
         return [value, undefined];
     }
 
-    public EvalExpression3(source: Tokenizer): [ExprVal, string | undefined] {
+    public EvalExpression3(source: Tokenizer): [ExprVal, ErrMsg] {
         let [value, emsg] = this.EvalExpression2(source);
         if (emsg !== undefined) {
             return [value, emsg];
@@ -779,7 +813,7 @@ export class Basic {
         }
         return [value, undefined];
     }
-    public EvalExpression4(source: Tokenizer): [ExprVal, string | undefined] {
+    public EvalExpression4(source: Tokenizer): [ExprVal, ErrMsg] {
         let [value, emsg] = this.EvalExpression3(source);
         if (emsg !== undefined) {
             return [value, emsg];
@@ -807,7 +841,7 @@ export class Basic {
         }
         return [value, undefined];
     }
-    public EvalExpression5(source: Tokenizer): [ExprVal, string | undefined] {
+    public EvalExpression5(source: Tokenizer): [ExprVal, ErrMsg] {
         let [value, emsg] = this.EvalExpression4(source);
         if (emsg !== undefined) {
             return [value, emsg];
@@ -836,7 +870,7 @@ export class Basic {
         return [value, undefined];
     }
 
-    public EvalExpression6(source: Tokenizer): [ExprVal, string | undefined] {
+    public EvalExpression6(source: Tokenizer): [ExprVal, ErrMsg] {
         let [value, emsg] = this.EvalExpression5(source);
         if (emsg !== undefined) {
             return [value, emsg];
@@ -874,7 +908,7 @@ export class Basic {
         }
         return [value, undefined];
     }
-    public EvalExpression7(source: Tokenizer): [ExprVal, string | undefined] {
+    public EvalExpression7(source: Tokenizer): [ExprVal, ErrMsg] {
         let [value, emsg] = this.EvalExpression6(source);
         if (emsg !== undefined) {
             return [value, emsg];
@@ -900,7 +934,7 @@ export class Basic {
      * @param source
      * @returns
      */
-    public EvalExpression(source: Tokenizer): [ExprVal, string | undefined] {
+    public EvalExpression(source: Tokenizer): [ExprVal, ErrMsg] {
         let [value, emsg] = this.EvalExpression7(source);
         if (emsg !== undefined) {
             return [value, emsg];
