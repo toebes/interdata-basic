@@ -86,6 +86,7 @@ export class Basic {
         [Token.GOSUB]: this.cmdGOSUB.bind(this),
         [Token.RETURN]: this.cmdRETURN.bind(this),
         [Token.IF]: this.cmdIF.bind(this),
+        [Token.REM]: this.cmdREM.bind(this),
     };
 
     public async doRun() {
@@ -551,6 +552,19 @@ export class Basic {
         this.gosubStack = [];
     }
 
+    /**
+     * REM Statement - just a remark to ignore
+     * @param parsed Parsed command structure
+     * @returns
+     */
+    private cmdREM(parsed: ParseResult): string {
+        return '';
+    }
+    /**
+     * END Statement - end program execution
+     * @param parsed Parsed command structure
+     * @returns
+     */
     private cmdEND(parsed: ParseResult): string {
         this.isRunning = false;
         return '';
