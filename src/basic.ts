@@ -43,6 +43,7 @@ import { ErrMsg, Variables } from './variables';
 
 const TABSTOP = 14;
 const MAXOUTPUTLINE = 132;
+const GOSUBDEPTH = 6;
 type ForState = {
     var: string;
     end: number;
@@ -62,6 +63,7 @@ export class Basic {
     protected runSourceIndex = 0;
     protected forStack: ForState[] = [];
     protected fnInUse: { [id: string]: boolean } = {};
+    protected gosubStack: number[] = [];
 
     protected cmdLookup: Partial<Record<Token, (parsed: ParseResult) => void>> =
         {
@@ -79,6 +81,8 @@ export class Basic {
             [Token.GOTO]: this.cmdGOTO.bind(this),
             [Token.END]: this.cmdEND.bind(this),
             [Token.DEF]: this.cmdDEF.bind(this),
+            [Token.GOSUB]: this.cmdGOSUB.bind(this),
+            [Token.RETURN]: this.cmdRETURN.bind(this),
         };
 
     public async doRun() {
@@ -345,11 +349,44 @@ export class Basic {
         }
     }
     /**
-     * Process LET command
+     * Process GOSUB command
+     * @param parsed Parsed structure
+     */
+    private cmdGOSUB(parsed: ParseResult) {
+        const lineIndex = this.getSourceIndex(parsed.line as number);
+        if (lineIndex !== undefined) {
+            if (this.gosubStack.length > GOSUBDEPTH) {
+                this.programError(`ATTEMPT TO GOSUB MORE THAN ${GOSUBDEPTH}`);
+            } else {
+                this.gosubStack.push(this.runSourceIndex);
+                this.runSourceIndex = lineIndex;
+            }
+        }
+    }
+    /**
+     * Process RETURN command
+     * @param parsed Parsed structure
+     */
+    private cmdRETURN(parsed: ParseResult) {
+        const returnLoc = this.gosubStack.pop();
+        if (returnLoc === undefined) {
+            this.programError(`ATTEMPT TO RETURN WITH NO GOSUB`);
+        } else {
+            this.runSourceIndex = returnLoc;
+        }
+    }
+
+    /**
+     * Process GOTO command
      * @param parsed Parsed structure
      */
     private cmdGOTO(parsed: ParseResult) {
-        const lineNum = parsed.line as number;
+        const lineIndex = this.getSourceIndex(parsed.line as number);
+        if (lineIndex !== undefined) {
+            this.runSourceIndex = lineIndex;
+        }
+    }
+    private getSourceIndex(lineNum: number): number | undefined {
         const lineIndex = this.program.findLineIndex(lineNum);
         const checkLine = this.program.getSourceLine(lineIndex);
         if (
@@ -358,9 +395,11 @@ export class Basic {
             lineNum !== checkLine.getLineNum()
         ) {
             this.programError(`LINE NUMBER ${lineNum} DOES NOT EXIST`);
+            return undefined;
         }
-        this.runSourceIndex = lineIndex!;
+        return lineIndex;
     }
+
     /**
      * Process LET command
      * @param parsed Parsed structure
@@ -464,14 +503,20 @@ export class Basic {
             }
             this.runSourceIndex = spot;
         } else {
-            this.variables.New();
-            this.fnInUse = {};
-            this.runSourceIndex = 0;
-            this.forStack = [];
+            this.resetRunState();
         }
         this.isRunning = true;
         this.doRun();
     }
+
+    private resetRunState() {
+        this.variables.New();
+        this.fnInUse = {};
+        this.runSourceIndex = 0;
+        this.forStack = [];
+        this.gosubStack = [];
+    }
+
     private cmdEND(parsed: ParseResult) {
         this.isRunning = false;
     }
