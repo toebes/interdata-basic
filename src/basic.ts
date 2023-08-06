@@ -73,6 +73,7 @@ export class Basic {
             [Token.SETTRACE]: this.cmdSETTRACE.bind(this),
             [Token.PRINT]: this.cmdPRINT.bind(this),
             [Token.DIM]: this.cmdDIM.bind(this),
+            [Token.GOTO]: this.cmdGOTO.bind(this),
         };
 
     public async doRun() {
@@ -337,7 +338,23 @@ export class Basic {
             this.runSourceIndex = state.sourceIndex;
         }
     }
-
+    /**
+     * Process LET command
+     * @param parsed Parsed structure
+     */
+    private cmdGOTO(parsed: ParseResult) {
+        const lineNum = parsed.line as number;
+        const lineIndex = this.program.findLineIndex(lineNum);
+        const checkLine = this.program.getSourceLine(lineIndex);
+        if (
+            lineIndex === undefined ||
+            checkLine === undefined ||
+            lineNum !== checkLine.getLineNum()
+        ) {
+            this.programError(`LINE NUMBER ${lineNum} DOES NOT EXIST`);
+        }
+        this.runSourceIndex = lineIndex!;
+    }
     /**
      * Process LET command
      * @param parsed Parsed structure
@@ -483,7 +500,7 @@ export class Basic {
     }
     /**************************************************************************************************************
      *
-     */
+     **************************************************************************************************************/
     public Break() {
         this.io.WriteLine('*BREAK*');
     }
@@ -492,6 +509,9 @@ export class Basic {
         this.program.addLine(Number(tokenstr), this.tokenizer.getRemainder());
     }
 
+    /**************************************************************************************************************
+     *  TOKEN PARSER ROUTINES
+     **************************************************************************************************************/
     public MatchToken(source: Tokenizer, tokenMatch: Token[]): Token {
         const saveState = source.saveState();
         const [tokenstr, token] = source.getToken();
@@ -517,6 +537,9 @@ export class Basic {
         }
         return [val, emsg];
     }
+    /**************************************************************************************************************
+     *  EXPRESSION PARSER ROUTINES
+     **************************************************************************************************************/
     public EvalExpression1(source: Tokenizer): [ExprVal, string | undefined] {
         const tokenMatch = [
             Token.NUMBER,
