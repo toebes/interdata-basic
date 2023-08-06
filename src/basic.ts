@@ -582,12 +582,14 @@ export class Basic {
                 this.programError(emsg);
                 return '';
             }
-            if (parsed.endinput === undefined || parsed.comma !== undefined) {
-                parsed = this.Parse(this.tokenizer, DIMSyntax);
-                if (parsed.error !== undefined) {
-                    this.io.WriteLine(parsed.error as string);
-                    return '';
-                }
+            if (parsed.endinput !== undefined) {
+                return '';
+            }
+
+            parsed = this.Parse(this.tokenizer, DIMSyntax);
+            if (parsed.error !== undefined) {
+                this.io.WriteLine(parsed.error as string);
+                return '';
             }
         } while (parsed.variable !== undefined);
 
@@ -835,11 +837,58 @@ export class Basic {
             case Token.STRINGVAR:
             case Token.VARIABLE:
                 if (this.MatchToken(source, [Token.LPAREN]) === Token.LPAREN) {
-                    // Array or substring
-                    return [
-                        tokenstr,
-                        `NOT IMPLEMENTED LOOKING UP INDEXED VARIABLES YET`,
-                    ];
+                    let [value, emsg] = this.EvalExpression(source);
+                    let value2 = undefined;
+                    [value, emsg] = this.CheckType(value, emsg, 'numeric', '');
+                    if (emsg !== undefined) {
+                        return [value, emsg];
+                    }
+                    if (this.MatchToken(source, [Token.COMMA])) {
+                        [value2, emsg] = this.EvalExpression(source);
+                        [value2, emsg] = this.CheckType(
+                            value2,
+                            emsg,
+                            'numeric',
+                            ''
+                        );
+                        if (emsg !== undefined) {
+                            return [value2, emsg];
+                        }
+                    }
+                    if (!this.MatchToken(source, [Token.RPAREN])) {
+                        return [value, `SYNTAX ERROR - MISSING )`];
+                    }
+                    if (token === Token.STRINGVAR) {
+                        let val = undefined;
+                        if (value2 === undefined) {
+                            [val, emsg] = this.variables.GetStringArray(
+                                tokenstr,
+                                value as number
+                            );
+                        } else {
+                            [val, emsg] = this.variables.getSubString(
+                                tokenstr,
+                                value as number,
+                                value2 as number
+                            );
+                        }
+                        return [val as ExprVal, emsg];
+                    } else {
+                        let val = undefined;
+                        if (value2 === undefined) {
+                            [val, emsg] = this.variables.GetNumeric1DArray(
+                                tokenstr,
+                                value as number
+                            );
+                        } else {
+                            [val, emsg] = this.variables.GetNumeric2DArray(
+                                tokenstr,
+                                value as number,
+                                value2 as number
+                            );
+                        }
+                        return [val as ExprVal, emsg];
+                    }
                 } else {
                     // Simple variable
                     if (token == Token.STRINGVAR) {

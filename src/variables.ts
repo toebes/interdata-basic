@@ -134,31 +134,23 @@ export class Variables {
         if (start > end) {
             return `START ${start} GREATER THAN END ${end} FOR STRING VARIABLE ${variable.toUpperCase()}`;
         }
-        if (start < 0 || start > entry.maxLen) {
+        if (start <= 0 || start > entry.maxLen) {
             return `START ${start} OUT OF RANGE ${
                 entry.maxLen
             } FOR STRING VARIABLE ${variable.toUpperCase()}`;
         }
-        if (end < 0 || end > entry.maxLen) {
+        if (end <= 0 || end > entry.maxLen) {
             return `END ${end} OUT OF RANGE ${
                 entry.maxLen
             } FOR STRING VARIABLE ${variable.toUpperCase()}`;
         }
-        if (value.length === 1 + start - end) {
-            // Just replacing characters, so we aren't going to adjust the length
-            entry.val =
-                entry.val.substring(0, start - 1) +
-                value +
-                entry.val.substring(end - 1);
-            // TODO: we may need to set entry.curLen = start + value.length
-        } else {
-            // We are replacing only part of the characters so the default string gets truncated
-            entry.val =
-                entry.val.substring(0, start - 1) +
-                value +
-                entry.val.substring(start + value.length);
-            entry.curLen = start + value.length;
-        }
+
+        // We are replacing only part of the characters so the default string gets truncated
+        entry.val =
+            entry.val.substring(0, start - 1) +
+            value +
+            entry.val.substring(start - 1 + value.length);
+        entry.curLen = start - 1 + value.length;
         return undefined;
     }
     /**
@@ -203,7 +195,7 @@ export class Variables {
                 `START ${start} GREATER THAN END ${end} FOR STRING ARRAY VARIABLE ${variable.toUpperCase()}`,
             ];
         }
-        if (start < 0 || start > entry.maxLen) {
+        if (start <= 0 || start > entry.maxLen) {
             return [
                 undefined,
                 `START ${start} OUT OF RANGE ${
@@ -211,7 +203,7 @@ export class Variables {
                 } FOR STRING VARIABLE ${variable.toUpperCase()}`,
             ];
         }
-        if (end < 0 || end > entry.maxLen) {
+        if (end <= 0 || end > entry.maxLen) {
             return [
                 undefined,
                 `END ${end} OUT OF RANGE ${
@@ -219,7 +211,7 @@ export class Variables {
                 } FOR STRING VARIABLE ${variable.toUpperCase()}`,
             ];
         }
-        return [entry.val.substring(start + 1, end + 1), undefined];
+        return [entry.val.substring(start - 1, end), undefined];
     }
     /**
      * Dimension a string array variable
