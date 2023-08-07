@@ -151,20 +151,20 @@ export class Basic {
             }
             // If it failed to parse, let them know
             if (parsed.error !== undefined) {
-                this.io.WriteLine(parsed.error as string)
-                return
-            }
-            // Line Numbers are for storing a line
-            if (token === Token.NUMBER) {
-                return this.storeLine(Number(tokenstr))
-            }
-            // See if we have a command handler for the command
-            let cmdFunc = this.cmdLookup[token]
-            if (cmdFunc !== undefined) {
-                cmd = cmdFunc(parsed)
+                cmd = this.programError(parsed.error as string)
             } else {
-                // We don't handle the command so let them know
-                cmd = this.programError(`UNKNOWN COMMAND '${tokenstr} - ${token}`)
+                // Line Numbers are for storing a line
+                if (token === Token.NUMBER) {
+                    return this.storeLine(Number(tokenstr))
+                }
+                // See if we have a command handler for the command
+                let cmdFunc = this.cmdLookup[token]
+                if (cmdFunc !== undefined) {
+                    cmd = cmdFunc(parsed)
+                } else {
+                    // We don't handle the command so let them know
+                    cmd = this.programError(`UNKNOWN COMMAND '${tokenstr} - ${token}`)
+                }
             }
         }
     }
@@ -318,12 +318,12 @@ export class Basic {
      */
     private cmdFOR(parsed: ParseResult): string {
         if (this.forStack.length >= 6) {
-            this.programError(`FOR LOOP NESTED MORE THAN 6 DEEP`)
+            this.programError(`FR-ERR FOR LOOP NESTED MORE THAN 6 DEEP`)
             return ''
         }
         // Make sure the variable isn't in in the stack
         if (this.forStack.findIndex((state) => state.var === parsed.var) >= 0) {
-            this.programError(`CAN'T REUSE FOR VARIABLE ${parsed.var}`)
+            this.programError(`FR-ERR CAN'T REUSE FOR VARIABLE ${parsed.var}`)
             return ''
         }
         let step = 1
@@ -384,7 +384,7 @@ export class Basic {
         const [lineIndex, cmd] = this.getSourceIndex(parsed.line as number)
         if (lineIndex !== undefined) {
             if (this.gosubStack.length > GOSUBDEPTH) {
-                this.programError(`ATTEMPT TO GOSUB MORE THAN ${GOSUBDEPTH}`)
+                this.programError(`GS-ERR ATTEMPT TO GOSUB MORE THAN ${GOSUBDEPTH}`)
             } else {
                 this.gosubStack.push(this.runSourceIndex)
                 this.runSourceIndex = lineIndex
@@ -399,7 +399,7 @@ export class Basic {
     private cmdRETURN(parsed: ParseResult): string {
         const returnLoc = this.gosubStack.pop()
         if (returnLoc === undefined) {
-            this.programError(`ATTEMPT TO RETURN WITH NO GOSUB`)
+            this.programError(`GS-ERR ATTEMPT TO RETURN WITH NO GOSUB`)
         } else {
             this.runSourceIndex = returnLoc
         }
@@ -477,7 +477,7 @@ export class Basic {
             checkLine === undefined ||
             lineNum !== checkLine.getLineNum()
         ) {
-            return [undefined, this.programError(`LINE NUMBER ${lineNum} DOES NOT EXIST`)]
+            return [undefined, this.programError(`LN-ERR LINE NUMBER ${lineNum} DOES NOT EXIST`)]
         }
         return [lineIndex, '']
     }
@@ -512,9 +512,9 @@ export class Basic {
     ) {
         let emsg
         if (isString && typeof assignVal !== 'string') {
-            emsg = 'MUST HAVE STRING TO ASSIGN TO STRING VARIABLE'
+            emsg = 'DA-ERR MUST HAVE STRING TO ASSIGN TO STRING VARIABLE'
         } else if (!isString && typeof assignVal !== 'number') {
-            emsg = 'MUST HAVE NUMBER TO ASSIGN TO NUMERIC VARIABLE'
+            emsg = 'DA-ERR MUST HAVE NUMBER TO ASSIGN TO NUMERIC VARIABLE'
         } else if (isString) {
             let value = assignVal as string
             if (idx1 === undefined) {
@@ -649,7 +649,7 @@ export class Basic {
      */
     private cmdCALL(parsed: ParseResult): string {
         // We can ignore everything on the line for now
-        return ''
+        return this.programError('CA-ERR - NO ASSEMBLY ROUTINES FOUND')
     }
     /**
      * REW unit Statement - Rewind a logical unit
@@ -808,8 +808,7 @@ export class Basic {
 
             parsed = this.Parse(this.tokenizer, DIMSyntax)
             if (parsed.error !== undefined) {
-                this.io.WriteLine(parsed.error as string)
-                return ''
+                return this.programError(parsed.error as string)
             }
         } while (parsed.variable !== undefined)
 
@@ -830,7 +829,7 @@ export class Basic {
         const definition = this.tokenizer.getRemainder()
 
         if (parm.length !== 1) {
-            this.programError(`FUNCTION '${fndef} PARAMETER ${parm} NOT A SINGLE LETTER`)
+            this.programError(`SY-ERR FUNCTION '${fndef} PARAMETER ${parm} NOT A SINGLE LETTER`)
         }
         this.variables.DefFN(fndef, parm, definition)
         return ''
@@ -949,11 +948,11 @@ export class Basic {
     ): [ExprVal, ErrMsg] {
         if (expType === 'numeric' && typeof val !== 'number') {
             if (val === '') {
-                return [val, `ERROR: EXPECTING NUMERIC TYPE`]
+                return [val, `SY-ERR ERROR: EXPECTING NUMERIC TYPE`]
             }
-            return [val, `ERROR '${val}' NOT NUMERIC TYPE`]
+            return [val, `SY-ERR ERROR '${val}' NOT NUMERIC TYPE`]
         } else if (expType === 'string' && typeof val !== 'string') {
-            return [val, `ERROR '${val}' NOT STRING TYPE`]
+            return [val, `SY-ERR ERROR '${val}' NOT STRING TYPE`]
         }
         return [val, emsg]
     }
@@ -963,10 +962,10 @@ export class Basic {
     public EvalFN(fn: string, numval: number): [ExprVal, ErrMsg] {
         let fnDef = this.variables.GetFN(fn)
         if (fnDef === undefined) {
-            return [0, `FUNCTION ${fn} NOT DEFINED`]
+            return [0, `UF-ERR FUNCTION ${fn} NOT DEFINED`]
         }
         if (this.fnInUse[fn] !== undefined) {
-            return [0, `FUNCTION ${fn} CALLED RECURSIVELY`]
+            return [0, `EX-ERR FUNCTION ${fn} CALLED RECURSIVELY`]
         }
         const tokenizer = new Tokenizer()
         let [oldval, oldmsg] = this.variables.GetNumbericVar(fnDef.parm)
@@ -1038,11 +1037,11 @@ export class Basic {
         const [tokenstr, token] = source.getToken()
         if (!tokenMatch.includes(token)) {
             if (!tokenFuncMatch.includes(token)) {
-                return ['0', `SYNTAX ERROR PARSING EXPRESSION - UNEXPECTED '${tokenstr}'`]
+                return ['0', `SY-ERR SYNTAX ERROR PARSING EXPRESSION - UNEXPECTED '${tokenstr}'`]
             }
             // parse the ( parameter )
             if (!this.MatchToken(source, [Token.LPAREN])) {
-                return [tokenstr, `SYNTAX ERROR - MISSING (`]
+                return [tokenstr, `PR-ERR SYNTAX ERROR - MISSING (`]
             }
             let [value, emsg] = this.EvalExpression(source)
             ;[value, emsg] = this.CheckType(value, emsg, FunctionExpressionType[token], '')
@@ -1050,7 +1049,7 @@ export class Basic {
                 return [value, emsg]
             }
             if (!this.MatchToken(source, [Token.RPAREN])) {
-                return [value, `SYNTAX ERROR - MISSING )`]
+                return [value, `PR-ERR SYNTAX ERROR - MISSING )`]
             }
             let numval = 0
             let strval = ''
@@ -1130,7 +1129,7 @@ export class Basic {
                     return [value, emsg]
                 }
                 if (!this.MatchToken(source, [Token.RPAREN])) {
-                    return [value, `SYNTAX ERROR - MISSING )`]
+                    return [value, `PR-ERR SYNTAX ERROR - MISSING )`]
                 }
                 return [value, undefined]
             case Token.STRINGVAR:
@@ -1150,7 +1149,7 @@ export class Basic {
                         }
                     }
                     if (!this.MatchToken(source, [Token.RPAREN])) {
-                        return [value, `SYNTAX ERROR - MISSING )`]
+                        return [value, `PR-ERR SYNTAX ERROR - MISSING )`]
                     }
                     if (token === Token.STRINGVAR) {
                         let val = undefined
@@ -1199,7 +1198,7 @@ export class Basic {
                     return [numval, emsg]
                 }
         }
-        return ['0', 'UNRECOGNIZED TOKEN']
+        return ['0', 'SY-ERR UNRECOGNIZED TOKEN']
     }
 
     public EvalExpression2(source: Tokenizer): [ExprVal, ErrMsg] {
@@ -1419,7 +1418,7 @@ export class Basic {
                         // The token doesn't match so we need to generate an error and skip out
                         result[
                             'error'
-                        ] = `SYNTAX ERROR: EXPECTED ${syntaxElem.tok} BUT FOUND ${tokenstr}/${token}`
+                        ] = `SY-ERR SYNTAX ERROR: EXPECTED ${syntaxElem.tok} BUT FOUND ${tokenstr}/${token}`
                         return result
                     }
                 }
