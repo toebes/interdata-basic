@@ -73,7 +73,7 @@ export class Basic {
     protected dataItems: ExprVal[] = []
     protected hasReadData = false
 
-    protected cmdLookup: Partial<Record<Token, (parsed: ParseResult) => string>> = {
+    protected cmdLookup: Partial<Record<Token, (parsed: ParseResult) => Promise<string>>> = {
         [Token.RUN]: this.cmdRUN.bind(this),
         [Token.LIST]: this.cmdLIST.bind(this),
         [Token.ERASE]: this.cmdErase.bind(this),
@@ -95,6 +95,7 @@ export class Basic {
         [Token.DATA]: this.cmdDATA.bind(this),
         [Token.STOP]: this.cmdSTOP.bind(this),
         [Token.READ]: this.cmdREAD.bind(this),
+        [Token.INPUT]: this.cmdINPUT.bind(this),
         [Token.RESTORE]: this.cmdRESTORE.bind(this),
         [Token.CALL]: this.cmdCALL.bind(this),
         [Token.REW]: this.cmdREW.bind(this),
@@ -104,79 +105,90 @@ export class Basic {
         [Token.RENUM]: this.cmdRENUM.bind(this),
     }
 
-    public async doRun() {
-        while (this.isRunning) {
-            let source = this.program.getSourceLine(this.runSourceIndex)
-            if (source === undefined) {
-                this.io.WriteLine('END')
-                this.isRunning = false
-                return
+    public async doRun(): Promise<void> {
+        return new Promise(async (resolve) => {
+            while (this.isRunning) {
+                let source = this.program.getSourceLine(this.runSourceIndex)
+                if (source === undefined) {
+                    this.io.WriteLine('END')
+                    this.isRunning = false
+                    return resolve()
+                }
+                this.runSourceIndex++
+                await this.execute(source.getSource(), source.getLineNum())
+                if (this.isRunning) {
+                    await this.delay(10)
+                }
             }
-            this.runSourceIndex++
-            this.execute(source.getSource(), source.getLineNum())
-            if (this.isRunning) {
-                await this.delay(1)
-            }
-        }
+            return resolve()
+        })
     }
     public delay(ms: number) {
         return new Promise((resolve) => setTimeout(resolve, ms))
     }
 
-    public execute(cmd: string, lineNum?: number): void {
-        while (cmd !== '') {
-            if (this.isTracing) {
-                if (lineNum !== undefined) {
-                    this.io.WriteLine(`TRACE: ${lineNum}: ${cmd}`)
+    public async execute(cmd: string, lineNum?: number): Promise<void> {
+        return new Promise(async (resolve) => {
+            const startCmd = cmd
+            while (cmd !== '') {
+                if (this.isTracing) {
+                    if (lineNum !== undefined) {
+                        this.io.WriteLine(`TRACE: ${lineNum}: ${cmd}`)
+                    }
                 }
-            }
 
-            // Parse the first token
-            let token: Token
-            let tokenstr: string
-            this.tokenizer.setLine(cmd)
-            const state = this.tokenizer.saveState()
-            ;[tokenstr, token] = this.tokenizer.getToken()
+                // Parse the first token
+                let token: Token
+                let tokenstr: string
+                this.tokenizer.setLine(cmd)
+                const state = this.tokenizer.saveState()
+                ;[tokenstr, token] = this.tokenizer.getToken()
 
-            // See of we have a parser for this type of token
-            let parsed: ParseResult = {}
+                // See of we have a parser for this type of token
+                let parsed: ParseResult = {}
 
-            let syntax: SyntaxElem[] | undefined
-            if (token === Token.VARIABLE || token === Token.STRINGVAR) {
-                this.tokenizer.restoreState(state)
-                parsed = this.Parse(this.tokenizer, LETSyntax)
-                token = Token.LET
-            } else if ((syntax = statementLookup[token]) !== undefined) {
-                parsed = this.Parse(this.tokenizer, syntax)
-            }
-            // If it failed to parse, let them know
-            if (parsed.error !== undefined) {
-                cmd = this.programError(parsed.error as string)
-            } else {
-                // Line Numbers are for storing a line
-                if (token === Token.NUMBER) {
-                    return this.storeLine(Number(tokenstr))
+                let syntax: SyntaxElem[] | undefined
+                if (token === Token.VARIABLE || token === Token.STRINGVAR) {
+                    this.tokenizer.restoreState(state)
+                    parsed = this.Parse(this.tokenizer, LETSyntax)
+                    token = Token.LET
+                } else if ((syntax = statementLookup[token]) !== undefined) {
+                    parsed = this.Parse(this.tokenizer, syntax)
                 }
-                // See if we have a command handler for the command
-                let cmdFunc = this.cmdLookup[token]
-                if (cmdFunc !== undefined) {
-                    cmd = cmdFunc(parsed)
+                // If it failed to parse, let them know
+                if (parsed.error !== undefined) {
+                    cmd = this.programError(parsed.error as string)
                 } else {
-                    // We don't handle the command so let them know
-                    cmd = this.programError(`UNKNOWN COMMAND '${tokenstr} - ${token}`)
+                    // Line Numbers are for storing a line
+                    if (token === Token.NUMBER) {
+                        this.storeLine(Number(tokenstr))
+                        return resolve()
+                    }
+                    // See if we have a command handler for the command
+                    let cmdFunc = this.cmdLookup[token]
+                    if (cmdFunc !== undefined) {
+                        cmd = await cmdFunc(parsed)
+                    } else {
+                        // We don't handle the command so let them know
+                        cmd = this.programError(`UNKNOWN COMMAND '${tokenstr} - ${token}`)
+                    }
                 }
             }
-        }
+            return resolve()
+        })
     }
     /**
      * Empty out program
      * @param parsed Parsed structure
      */
-    private cmdNEW(parsed: ParseResult): string {
-        this.program.EraseRange(0, MAXLINE)
-        this.resetRunState()
-        return ''
+    private cmdNEW(parsed: ParseResult): Promise<string> {
+        return new Promise(async (resolve) => {
+            this.program.EraseRange(0, MAXLINE)
+            this.resetRunState()
+            return resolve('')
+        })
     }
+
     public programError(msg: string): string {
         // See if we have an ON ERROR in effect first
         if (this.onErrorLine !== undefined) {
@@ -258,210 +270,231 @@ export class Basic {
     // print -2.000
     // print 00.0
 
-    public cmdPRINT(parsed: ParseResult): string {
-        if (parsed.using) {
-            this.programError('PRINT USING NOT YET SUPPORTED')
-            return ' '
-        }
-        let logicalUnit = this.io.GetUnit(parsed.unit as number)
-        while (parsed.printitem !== undefined) {
-            let out = ''
-            if (parsed.tab !== undefined) {
-                let tabpos = Number(parsed.tab)
-                if (!isNaN(tabpos) && tabpos < MAXOUTPUTLINE && tabpos > logicalUnit.tabPos) {
-                    out = ' '.repeat(tabpos - 1 - logicalUnit.tabPos)
+    public cmdPRINT(parsed: ParseResult): Promise<string> {
+        return new Promise(async (resolve) => {
+            if (parsed.using) {
+                return resolve(this.programError('PRINT USING NOT YET SUPPORTED'))
+            }
+            let logicalUnit = this.io.GetUnit(parsed.unit as number)
+            while (parsed.printitem !== undefined) {
+                let out = ''
+                if (parsed.tab !== undefined) {
+                    let tabpos = Number(parsed.tab)
+                    if (!isNaN(tabpos) && tabpos < MAXOUTPUTLINE && tabpos > logicalUnit.tabPos) {
+                        out = ' '.repeat(tabpos - 1 - logicalUnit.tabPos)
+                    }
+                } else if (typeof parsed.expression === 'number') {
+                    out = this.formatNumber(parsed.expression)
+                } else {
+                    out = parsed.expression
                 }
-            } else if (typeof parsed.expression === 'number') {
-                out = this.formatNumber(parsed.expression)
-            } else {
-                out = parsed.expression
-            }
-            // If it won't fit on the line we put it on the next one
-            if (logicalUnit.tabPos + out.length > MAXOUTPUTLINE) {
-                logicalUnit.outputFunction('\r\n')
-                logicalUnit.tabPos = 0
-            }
-            // See how we need to adjust the value..
-            if (parsed.tab === undefined && parsed.semi !== undefined) {
-                out += ' '
-            } else if (parsed.tab === undefined && parsed.comma !== undefined) {
-                // Tabstops are every 14. So pad it with the correct number of spaces to get to the next tabstop
-                out += ' '.repeat(TABSTOP - ((logicalUnit.tabPos + out.length) % TABSTOP))
-            } else if (parsed.endinput !== undefined) {
-                out += '\r\n'
+                // If it won't fit on the line we put it on the next one
+                if (logicalUnit.tabPos + out.length > MAXOUTPUTLINE) {
+                    logicalUnit.outputFunction('\r\n')
+                    logicalUnit.tabPos = 0
+                }
+                // See how we need to adjust the value..
+                if (parsed.tab === undefined && parsed.semi !== undefined) {
+                    out += ' '
+                } else if (parsed.tab === undefined && parsed.comma !== undefined) {
+                    // Tabstops are every 14. So pad it with the correct number of spaces to get to the next tabstop
+                    out += ' '.repeat(TABSTOP - ((logicalUnit.tabPos + out.length) % TABSTOP))
+                } else if (parsed.endinput !== undefined) {
+                    out += '\r\n'
+                    logicalUnit.outputFunction(out)
+                    logicalUnit.tabPos = 0
+                    return resolve('')
+                }
+                logicalUnit.tabPos += out.length
                 logicalUnit.outputFunction(out)
-                logicalUnit.tabPos = 0
-                return ''
+                parsed = this.Parse(this.tokenizer, PRINTVarSyntax)
             }
-            logicalUnit.tabPos += out.length
-            logicalUnit.outputFunction(out)
-            parsed = this.Parse(this.tokenizer, PRINTVarSyntax)
-        }
-        // IF we didn't get all the way to the end of the print line, something is wrong
-        if (parsed.endinput === undefined) {
-            this.programError('SYNTAX ERROR')
-        }
-        return ''
+            // IF we didn't get all the way to the end of the print line, something is wrong
+            if (parsed.endinput === undefined) {
+                return resolve(this.programError('SY-ERR SYNTAX ERROR'))
+            }
+            return resolve('')
+        })
     }
-    public cmdENDTRACE(parsed: ParseResult): string {
-        this.isTracing = false
-        return ''
+
+    public cmdENDTRACE(parsed: ParseResult): Promise<string> {
+        return new Promise(async (resolve) => {
+            this.isTracing = false
+            return resolve('')
+        })
     }
-    public cmdSETTRACE(parsed: ParseResult): string {
-        this.isTracing = true
-        return ''
+    public cmdSETTRACE(parsed: ParseResult): Promise<string> {
+        return new Promise(async (resolve) => {
+            this.isTracing = true
+            return resolve('')
+        })
     }
 
     /**
      * For loop
      * @param parsed Parsed structure
      */
-    private cmdFOR(parsed: ParseResult): string {
-        if (this.forStack.length >= 6) {
-            this.programError(`FR-ERR FOR LOOP NESTED MORE THAN 6 DEEP`)
-            return ''
-        }
-        // Make sure the variable isn't in in the stack
-        if (this.forStack.findIndex((state) => state.var === parsed.var) >= 0) {
-            this.programError(`FR-ERR CAN'T REUSE FOR VARIABLE ${parsed.var}`)
-            return ''
-        }
-        let step = 1
-        if (parsed.step !== undefined && typeof parsed.step === 'number') {
-            step = parsed.step
-        }
-        let forvar = parsed.var as string
-        this.forStack.push({
-            var: forvar,
-            end: parsed.end as number,
-            step: step,
-            sourceIndex: this.runSourceIndex,
+    private cmdFOR(parsed: ParseResult): Promise<string> {
+        return new Promise(async (resolve) => {
+            if (this.forStack.length >= 6) {
+                return resolve(this.programError(`FR-ERR FOR LOOP NESTED MORE THAN 6 DEEP`))
+            }
+            // Make sure the variable isn't in in the stack
+            if (this.forStack.findIndex((state) => state.var === parsed.var) >= 0) {
+                return resolve(this.programError(`FR-ERR CAN'T REUSE FOR VARIABLE ${parsed.var}`))
+            }
+            let step = 1
+            if (parsed.step !== undefined && typeof parsed.step === 'number') {
+                step = parsed.step
+            }
+            let forvar = parsed.var as string
+            this.forStack.push({
+                var: forvar,
+                end: parsed.end as number,
+                step: step,
+                sourceIndex: this.runSourceIndex,
+            })
+            this.variables.SetNumericVar(forvar, parsed.start as number)
+            return resolve('')
         })
-        this.variables.SetNumericVar(forvar, parsed.start as number)
-        return ''
     }
     /**
      * Next
      * @param parsed Parsed structure
      */
-    private cmdNEXT(parsed: ParseResult): string {
-        const nextIndex = this.forStack.findIndex((state) => state.var === parsed.var)
+    private cmdNEXT(parsed: ParseResult): Promise<string> {
+        return new Promise(async (resolve) => {
+            const nextIndex = this.forStack.findIndex((state) => state.var === parsed.var)
 
-        if (nextIndex === -1) {
-            this.programError(`NO FOR IN PROGRESS FOR ${parsed.var}`)
-            return ''
-        }
-        let state = this.forStack[nextIndex]
-        let [current, emsg] = this.variables.GetNumbericVar(state.var)
-
-        if (emsg !== undefined) {
-            this.programError(emsg)
-            return ''
-        }
-        if (current === undefined) {
-            current = 0
-        }
-        current += state.step
-        this.variables.SetNumericVar(state.var, current)
-        // See if we are counting up or down
-        if ((state.step > 0 && current > state.end) || (state.step < 0 && current < state.end)) {
-            // We are done with the loop, so purge the stack to this point
-            this.forStack.splice(nextIndex, this.forStack.length - nextIndex)
-        } else {
-            // We have to continue the loop, but if there is anything on the stack above us, remove them
-            if (nextIndex < this.forStack.length) {
-                this.forStack.splice(nextIndex + 1, this.forStack.length - nextIndex)
+            if (nextIndex === -1) {
+                return resolve(this.programError(`NO FOR IN PROGRESS FOR ${parsed.var}`))
             }
-            this.runSourceIndex = state.sourceIndex
-        }
-        return ''
+            let state = this.forStack[nextIndex]
+            let [current, emsg] = this.variables.GetNumbericVar(state.var)
+
+            if (emsg !== undefined) {
+                return resolve(this.programError(emsg))
+            }
+            if (current === undefined) {
+                current = 0
+            }
+            current += state.step
+            this.variables.SetNumericVar(state.var, current)
+            // See if we are counting up or down
+            if (
+                (state.step > 0 && current > state.end) ||
+                (state.step < 0 && current < state.end)
+            ) {
+                // We are done with the loop, so purge the stack to this point
+                this.forStack.splice(nextIndex, this.forStack.length - nextIndex)
+            } else {
+                // We have to continue the loop, but if there is anything on the stack above us, remove them
+                if (nextIndex < this.forStack.length) {
+                    this.forStack.splice(nextIndex + 1, this.forStack.length - nextIndex)
+                }
+                this.runSourceIndex = state.sourceIndex
+            }
+            return resolve('')
+        })
     }
+
     /**
      * Process GOSUB command
      * @param parsed Parsed structure
      */
-    private cmdGOSUB(parsed: ParseResult): string {
-        const [lineIndex, cmd] = this.getSourceIndex(parsed.line as number)
-        if (lineIndex !== undefined) {
-            if (this.gosubStack.length > GOSUBDEPTH) {
-                this.programError(`GS-ERR ATTEMPT TO GOSUB MORE THAN ${GOSUBDEPTH}`)
-            } else {
+    private cmdGOSUB(parsed: ParseResult): Promise<string> {
+        return new Promise(async (resolve) => {
+            const [lineIndex, cmd] = this.getSourceIndex(parsed.line as number)
+            if (lineIndex !== undefined) {
+                if (this.gosubStack.length > GOSUBDEPTH) {
+                    return resolve(
+                        this.programError(`GS-ERR ATTEMPT TO GOSUB MORE THAN ${GOSUBDEPTH}`)
+                    )
+                }
                 this.gosubStack.push(this.runSourceIndex)
                 this.runSourceIndex = lineIndex
             }
-        }
-        return cmd
+            return resolve(cmd)
+        })
     }
     /**
      * Process RETURN command
      * @param parsed Parsed structure
      */
-    private cmdRETURN(parsed: ParseResult): string {
-        const returnLoc = this.gosubStack.pop()
-        if (returnLoc === undefined) {
-            this.programError(`GS-ERR ATTEMPT TO RETURN WITH NO GOSUB`)
-        } else {
-            this.runSourceIndex = returnLoc
-        }
-        return ''
+    private cmdRETURN(parsed: ParseResult): Promise<string> {
+        return new Promise(async (resolve) => {
+            const returnLoc = this.gosubStack.pop()
+            if (returnLoc === undefined) {
+                return resolve(this.programError(`GS-ERR ATTEMPT TO RETURN WITH NO GOSUB`))
+            }
+            this.runSourceIndex = returnLoc as number
+            return resolve('')
+        })
     }
+
     /**
      * Process IF command
      * @param parsed Parsed structure
      */
-    private cmdIF(parsed: ParseResult): string {
-        if ((parsed.expr as number) !== 0) {
-            // We need to take the if clause
-            if (parsed.linenum !== undefined) {
-                return `GOTO ${parsed.linenum}`
-            } else if (parsed.then !== undefined) {
-                return this.tokenizer.getRemainder()
+    private cmdIF(parsed: ParseResult): Promise<string> {
+        return new Promise(async (resolve) => {
+            if ((parsed.expr as number) !== 0) {
+                // We need to take the if clause
+                if (parsed.linenum !== undefined) {
+                    return resolve(`GOTO ${parsed.linenum}`)
+                } else if (parsed.then !== undefined) {
+                    return resolve(this.tokenizer.getRemainder())
+                }
             }
-        }
-        return ''
+            return resolve('')
+        })
     }
     /**
      * ON Command
      * @param parsed Parsed structure
      * @returns Additional command to execute
      */
-    private cmdON(parsed: ParseResult): string {
-        if (parsed.onerror !== undefined) {
-            const [lineIndex, cmd] = this.getSourceIndex(parsed.target as number)
-            if (lineIndex !== undefined) {
-                this.onErrorLine = parsed.target as number
+    private cmdON(parsed: ParseResult): Promise<string> {
+        return new Promise(async (resolve) => {
+            if (parsed.onerror !== undefined) {
+                const [lineIndex, cmd] = this.getSourceIndex(parsed.target as number)
+                if (lineIndex !== undefined) {
+                    this.onErrorLine = parsed.target as number
+                }
+                return resolve(cmd)
             }
-            return cmd
-        }
-        let cmdBase = 'GOTO'
-        if (parsed.onaction === Token.GOSUB) {
-            cmdBase = 'GOSUB'
-        }
-        // This is a on (n).  Figure out which one we want
-        let choice = Math.floor(parsed.expression as number)
-        while (choice > 0) {
-            if (choice === 1) {
-                return `${cmdBase} ${parsed.target as number}`
+            let cmdBase = 'GOTO'
+            if (parsed.onaction === Token.GOSUB) {
+                cmdBase = 'GOSUB'
             }
-            choice--
-            if (parsed.comma == undefined || parsed.endinput !== undefined) {
-                return ''
+            // This is a on (n).  Figure out which one we want
+            let choice = Math.floor(parsed.expression as number)
+            while (choice > 0) {
+                if (choice === 1) {
+                    return resolve(`${cmdBase} ${parsed.target as number}`)
+                }
+                choice--
+                if (parsed.comma == undefined || parsed.endinput !== undefined) {
+                    return resolve('')
+                }
+                parsed = this.Parse(this.tokenizer, ONChoiceSyntax)
             }
-            parsed = this.Parse(this.tokenizer, ONChoiceSyntax)
-        }
-        return ''
+            return resolve('')
+        })
     }
     /**
      * Process GOTO command
      * @param parsed Parsed structure
      * @returns Additional command to execute
      */
-    private cmdGOTO(parsed: ParseResult): string {
-        const [lineIndex, cmd] = this.getSourceIndex(parsed.line as number)
-        if (lineIndex !== undefined) {
-            this.runSourceIndex = lineIndex
-        }
-        return cmd
+    private cmdGOTO(parsed: ParseResult): Promise<string> {
+        return new Promise(async (resolve) => {
+            const [lineIndex, cmd] = this.getSourceIndex(parsed.line as number)
+            if (lineIndex !== undefined) {
+                this.runSourceIndex = lineIndex
+            }
+            return resolve(cmd)
+        })
     }
 
     /**
@@ -487,20 +520,22 @@ export class Basic {
      * @param parsed Parsed structure
      * @returns Additional command to execute
      */
-    private cmdLET(parsed: ParseResult): string {
-        let varname = parsed.variable as string
-        let isString = parsed.variable_type === Token.STRINGVAR
-        let idx1 = parsed.index1 as number
-        let idx2 = parsed.index2 as number
-        let assignVal = parsed.expression
-        let emsg
+    private cmdLET(parsed: ParseResult): Promise<string> {
+        return new Promise(async (resolve) => {
+            let varname = parsed.variable as string
+            let isString = parsed.variable_type === Token.STRINGVAR
+            let idx1 = parsed.index1 as number
+            let idx2 = parsed.index2 as number
+            let assignVal = parsed.expression
+            let emsg
 
-        // We can only assign strings to strings and numbers to numbers
-        emsg = this.doAssign(isString, varname, idx1, idx2, assignVal)
-        if (emsg !== undefined) {
-            return this.programError(emsg)
-        }
-        return ''
+            // We can only assign strings to strings and numbers to numbers
+            emsg = this.doAssign(isString, varname, idx1, idx2, assignVal)
+            if (emsg !== undefined) {
+                return resolve(this.programError(emsg))
+            }
+            return resolve('')
+        })
     }
 
     private doAssign(
@@ -537,72 +572,80 @@ export class Basic {
         return emsg
     }
 
-    private cmdErase(parsed: ParseResult): string {
-        if (parsed.start === undefined) {
-            // erase all
-            this.program.EraseRange(0, MAXLINE)
-        } else if (parsed.end === undefined) {
-            this.program.Erase(Number(parsed.start))
-        } else {
-            this.program.EraseRange(Number(parsed.start), Number(parsed.end))
-        }
-        return ''
-    }
-
-    private cmdLIST(parsed: ParseResult): string {
-        let firstLine = 1
-        let lastLine = MAXLINE
-        if (parsed.start !== undefined) {
-            firstLine = Number(parsed.start)
-            if (parsed.end === undefined) {
-                lastLine = firstLine
+    private cmdErase(parsed: ParseResult): Promise<string> {
+        return new Promise(async (resolve) => {
+            if (parsed.start === undefined) {
+                // erase all
+                this.program.EraseRange(0, MAXLINE)
+            } else if (parsed.end === undefined) {
+                this.program.Erase(Number(parsed.start))
             } else {
-                lastLine = Number(parsed.end)
+                this.program.EraseRange(Number(parsed.start), Number(parsed.end))
             }
-        }
-
-        let unit: number | undefined
-        if (parsed.unit !== undefined) {
-            unit = parsed.unit as number
-        }
-        const source = this.program.List(firstLine, lastLine)
-        source.forEach((sourceLine) => {
-            this.io.WriteLine(`${sourceLine.getLineNum()} ${sourceLine.getSource()}`, unit)
+            return resolve('')
         })
-        return ''
     }
 
-    private cmdRENUM(parsed: ParseResult): string {
-        if (this.isRunning) {
-            return this.programError('RENUM NOT ALLOWED IN RUNNING PROGRAM')
-        }
-
-        let start: number = parsed.start as number
-        let increment: number | undefined
-        if (parsed.increment !== undefined) {
-            increment = parsed.increment as number
-        }
-        const emsg = this.program.Renum(start, increment)
-        if (emsg !== undefined) {
-            this.io.WriteLine(emsg)
-        }
-        return ''
-    }
-    private cmdRUN(parsed: ParseResult): string {
-        if (parsed.line !== undefined) {
-            // Find the line number
-            const spot = this.program.findLineIndex(Number(parsed.line))
-            if (spot === undefined) {
-                this.io.WriteLine(`LINE ${parsed.line} NOT FOUND`)
-                return ''
+    private cmdLIST(parsed: ParseResult): Promise<string> {
+        return new Promise(async (resolve) => {
+            let firstLine = 1
+            let lastLine = MAXLINE
+            if (parsed.start !== undefined) {
+                firstLine = Number(parsed.start)
+                if (parsed.end === undefined) {
+                    lastLine = firstLine
+                } else {
+                    lastLine = Number(parsed.end)
+                }
             }
-            this.runSourceIndex = spot
-        } else {
-            this.resetRunState()
-        }
-        this.isRunning = true
-        this.doRun()
-        return ''
+
+            let unit: number | undefined
+            if (parsed.unit !== undefined) {
+                unit = parsed.unit as number
+            }
+            const source = this.program.List(firstLine, lastLine)
+            source.forEach((sourceLine) => {
+                this.io.WriteLine(`${sourceLine.getLineNum()} ${sourceLine.getSource()}`, unit)
+            })
+            return resolve('')
+        })
+    }
+
+    private cmdRENUM(parsed: ParseResult): Promise<string> {
+        return new Promise(async (resolve) => {
+            if (this.isRunning) {
+                return resolve(this.programError('RENUM NOT ALLOWED IN RUNNING PROGRAM'))
+            }
+
+            let start: number = parsed.start as number
+            let increment: number | undefined
+            if (parsed.increment !== undefined) {
+                increment = parsed.increment as number
+            }
+            const emsg = this.program.Renum(start, increment)
+            if (emsg !== undefined) {
+                this.io.WriteLine(emsg)
+            }
+            return resolve('')
+        })
+    }
+
+    private cmdRUN(parsed: ParseResult): Promise<string> {
+        return new Promise(async (resolve) => {
+            if (parsed.line !== undefined) {
+                // Find the line number
+                const spot = this.program.findLineIndex(Number(parsed.line))
+                if (spot === undefined) {
+                    return resolve(this.programError(`LN-ERR LINE ${parsed.line} NOT FOUND`))
+                }
+                this.runSourceIndex = spot
+            } else {
+                this.resetRunState()
+            }
+            this.isRunning = true
+            await this.doRun()
+            return resolve('')
+        })
     }
 
     private resetRunState() {
@@ -631,72 +674,88 @@ export class Basic {
      * @param parsed Parsed command structure
      * @returns
      */
-    private cmdDATA(parsed: ParseResult): string {
-        return ''
+    private cmdDATA(parsed: ParseResult): Promise<string> {
+        return new Promise(async (resolve) => {
+            return resolve('')
+        })
     }
     /**
      * REM Statement - just a remark to ignore
      * @param parsed Parsed command structure
      * @returns
      */
-    private cmdREM(parsed: ParseResult): string {
-        return ''
+    private cmdREM(parsed: ParseResult): Promise<string> {
+        return new Promise(async (resolve) => {
+            return resolve('')
+        })
     }
     /**
      * CALL Statement - call a system assembler function
      * @param parsed Parsed command structure
      * @returns Command to execute (nothing in this case)
      */
-    private cmdCALL(parsed: ParseResult): string {
-        // We can ignore everything on the line for now
-        return this.programError('CA-ERR - NO ASSEMBLY ROUTINES FOUND')
+    private cmdCALL(parsed: ParseResult): Promise<string> {
+        return new Promise(async (resolve) => {
+            // We can ignore everything on the line for now
+            return resolve(this.programError('CA-ERR - NO ASSEMBLY ROUTINES FOUND'))
+        })
     }
     /**
      * REW unit Statement - Rewind a logical unit
      * @param parsed Parsed command structure
      * @returns Command to execute (nothing in this case)
      */
-    private cmdREW(parsed: ParseResult): string {
-        this.io.Rewind(parsed.logicalUnit as number)
-        return ''
+    private cmdREW(parsed: ParseResult): Promise<string> {
+        return new Promise(async (resolve) => {
+            this.io.Rewind(parsed.logicalUnit as number)
+            return resolve('')
+        })
     }
     /**
      * WFM unit Statement - Write a file mark on a logical unit
      * @param parsed Parsed command structure
      * @returns Command to execute (nothing in this case)
      */
-    private cmdWFM(parsed: ParseResult): string {
-        this.io.WriteFileMark(parsed.logicalUnit as number)
-        return ''
+    private cmdWFM(parsed: ParseResult): Promise<string> {
+        return new Promise(async (resolve) => {
+            this.io.WriteFileMark(parsed.logicalUnit as number)
+            return resolve('')
+        })
     }
     /**
      * BSP unit Statement - BackSpace a logical unit
      * @param parsed Parsed command structure
      * @returns Command to execute (nothing in this case)
      */
-    private cmdBSP(parsed: ParseResult): string {
-        this.io.BackSpace(parsed.logicalUnit as number)
-        return ''
+    private cmdBSP(parsed: ParseResult): Promise<string> {
+        return new Promise(async (resolve) => {
+            this.io.BackSpace(parsed.logicalUnit as number)
+            return resolve('')
+        })
     }
     /**
      * END Statement - end program execution
      * @param parsed Parsed command structure
      * @returns
      */
-    private cmdEND(parsed: ParseResult): string {
-        this.isRunning = false
-        return ''
+    private cmdEND(parsed: ParseResult): Promise<string> {
+        return new Promise(async (resolve) => {
+            this.isRunning = false
+            return resolve('')
+        })
     }
     /**
      * STOP Statement - end program execution
      * @param parsed Parsed command structure
      * @returns
      */
-    private cmdSTOP(parsed: ParseResult): string {
-        this.isRunning = false
-        let lineNum = this.getCurrentLineNum()
-        this.io.WriteLine(`STOP ${lineNum}`)
-        return ''
+    private cmdSTOP(parsed: ParseResult): Promise<string> {
+        return new Promise(async (resolve) => {
+            this.isRunning = false
+            let lineNum = this.getCurrentLineNum()
+            this.io.WriteLine(`STOP ${lineNum}`)
+            return resolve('')
+        })
     }
     private getCurrentLineNum(): number | undefined {
         let lineNum: number | undefined
@@ -733,106 +792,124 @@ export class Basic {
             }
         }
     }
+    private cmdINPUT(parsed: ParseResult): Promise<string> {
+        return new Promise(async (resolve) => {
+            let logicalUnit = this.io.GetUnit(parsed.unit as number)
+            let inputString = await logicalUnit.inputFunction()
+            return resolve('')
+        })
+    }
     /**
      * Read one or more data items.
      * @param parsed Parsed command structure
      * @returns command to execute
      */
-    private cmdREAD(parsed: ParseResult): string {
-        let cmd = ''
-        while (parsed.variable !== undefined) {
-            let varname = parsed.variable as string
-            let isString = parsed.variable_type === Token.STRINGVAR
-            let idx1 = parsed.index1 as number
-            let idx2 = parsed.index2 as number
-            let item = this.getData()
-            if (item === undefined) {
-                this.isRunning = false
-                return ''
+    private cmdREAD(parsed: ParseResult): Promise<string> {
+        return new Promise(async (resolve) => {
+            while (parsed.variable !== undefined) {
+                let varname = parsed.variable as string
+                let isString = parsed.variable_type === Token.STRINGVAR
+                let idx1 = parsed.index1 as number
+                let idx2 = parsed.index2 as number
+                let item = this.getData()
+                if (item === undefined) {
+                    this.isRunning = false
+                    return resolve('')
+                }
+                let emsg = this.doAssign(isString, varname, idx1, idx2, item as ExprVal)
+                if (emsg !== undefined) {
+                    return resolve(this.programError(emsg))
+                }
+                if (parsed.endinput !== undefined) {
+                    return resolve('')
+                }
+                parsed = this.Parse(this.tokenizer, READVarSyntax)
             }
-            let emsg = this.doAssign(isString, varname, idx1, idx2, item)
-            if (emsg !== undefined) {
-                return this.programError(emsg)
-            }
-            if (parsed.endinput !== undefined) {
-                return ''
-            }
-            parsed = this.Parse(this.tokenizer, READVarSyntax)
-        }
-        return ''
+            return resolve('')
+        })
     }
     /**
      * Restart the Data read at the first data statement
      * @param parsed Parsed command structure
      * @returns command to execute
      */
-    private cmdRESTORE(parsed: ParseResult): string {
-        this.dataPos = 0
-        return ''
+    private cmdRESTORE(parsed: ParseResult): Promise<string> {
+        return new Promise(async (resolve) => {
+            this.dataPos = 0
+            return resolve('')
+        })
     }
     /**
      * DIM a variable (declare space)
      * @param parsed Parsed command structure
      * @returns command to execute
      */
-    private cmdDIM(parsed: ParseResult): string {
-        do {
-            if (parsed.variable === undefined) {
-                this.programError('SYNTAX ERROR IN DIM STATEMENT')
-            }
-            let emsg
-            let dimvar = parsed.variable as string
-            const dim1 = parsed.index1 as number
-            if (parsed.index2 !== undefined) {
-                const dim2 = parsed.index2 as number
-                if (parsed.variable_type === Token.STRINGVAR) {
-                    // String array
-                    emsg = this.variables.DimStringArray(dimvar, dim1, dim2)
-                } else {
-                    emsg = this.variables.DimNumeric2DArray(dimvar, dim1, dim2)
+    private cmdDIM(parsed: ParseResult): Promise<string> {
+        return new Promise(async (resolve) => {
+            do {
+                if (parsed.variable === undefined) {
+                    this.programError('SYNTAX ERROR IN DIM STATEMENT')
                 }
-            } else if (parsed.variable_type === Token.STRINGVAR) {
-                // Normal string
-                emsg = this.variables.DimString(dimvar, dim1)
-            } else {
-                // 1D Numeric array
-                this.variables.DimNumeric1DArray(dimvar, dim1)
-            }
-            if (emsg !== undefined) {
-                this.programError(emsg)
-                return ''
-            }
-            if (parsed.endinput !== undefined) {
-                return ''
-            }
+                let emsg
+                let dimvar = parsed.variable as string
+                const dim1 = parsed.index1 as number
+                if (parsed.index2 !== undefined) {
+                    const dim2 = parsed.index2 as number
+                    if (parsed.variable_type === Token.STRINGVAR) {
+                        // String array
+                        emsg = this.variables.DimStringArray(dimvar, dim1, dim2)
+                    } else {
+                        emsg = this.variables.DimNumeric2DArray(dimvar, dim1, dim2)
+                    }
+                } else if (parsed.variable_type === Token.STRINGVAR) {
+                    // Normal string
+                    emsg = this.variables.DimString(dimvar, dim1)
+                } else {
+                    // 1D Numeric array
+                    this.variables.DimNumeric1DArray(dimvar, dim1)
+                }
+                if (emsg !== undefined) {
+                    return resolve(this.programError(emsg))
+                }
+                if (parsed.endinput !== undefined) {
+                    return resolve('')
+                }
 
-            parsed = this.Parse(this.tokenizer, DIMSyntax)
-            if (parsed.error !== undefined) {
-                return this.programError(parsed.error as string)
-            }
-        } while (parsed.variable !== undefined)
+                parsed = this.Parse(this.tokenizer, DIMSyntax)
+                if (parsed.error !== undefined) {
+                    return resolve(this.programError(parsed.error as string))
+                }
+            } while (parsed.variable !== undefined)
 
-        if (parsed.endinput === undefined) {
-            this.programError('SYNTAX ERROR AT END OF DIM STATEMENT')
-        }
-        return ''
+            if (parsed.endinput === undefined) {
+                return resolve(this.programError('SY-ERR SYNTAX ERROR AT END OF DIM STATEMENT'))
+            }
+            return resolve('')
+        })
     }
+
     /**
      * DEFine a global function
      * @param parsed Parsed command structure
      * @returns command to execute
      */
 
-    private cmdDEF(parsed: ParseResult): string {
-        const parm = parsed.parm as string
-        const fndef = parsed.fndef as string
-        const definition = this.tokenizer.getRemainder()
+    private cmdDEF(parsed: ParseResult): Promise<string> {
+        return new Promise(async (resolve) => {
+            const parm = parsed.parm as string
+            const fndef = parsed.fndef as string
+            const definition = this.tokenizer.getRemainder()
 
-        if (parm.length !== 1) {
-            this.programError(`SY-ERR FUNCTION '${fndef} PARAMETER ${parm} NOT A SINGLE LETTER`)
-        }
-        this.variables.DefFN(fndef, parm, definition)
-        return ''
+            if (parm.length !== 1) {
+                return resolve(
+                    this.programError(
+                        `SY-ERR FUNCTION '${fndef} PARAMETER ${parm} NOT A SINGLE LETTER`
+                    )
+                )
+            }
+            this.variables.DefFN(fndef, parm, definition)
+            return resolve('')
+        })
     }
     /**************************************************************************************************************
      *
@@ -914,13 +991,17 @@ export class Basic {
                 line += extra + tokenstr + ' ' + this.tokenizer.getRemainder()
                 token = Token.ENDINPUT
             } else {
-                if (tokenSpaceBefore.includes(token) && line.length > 1) {
-                    extra = ' '
-                }
-                line += extra + tokenstr
-                extra = ''
-                if (tokenSpaceAfter.includes(token)) {
-                    extra = ' '
+                if (token === Token.STRING) {
+                    line += `${extra}"${tokenstr}"`
+                } else {
+                    if (tokenSpaceBefore.includes(token) && line.length > 1) {
+                        extra = ' '
+                    }
+                    line += extra + tokenstr
+                    extra = ''
+                    if (tokenSpaceAfter.includes(token)) {
+                        extra = ' '
+                    }
                 }
                 ;[tokenstr, token] = this.tokenizer.getToken()
             }

@@ -84,7 +84,7 @@ async function runInterpreter(term: Terminal, localEcho: any): Promise<void> {
         try {
             const input = await localEcho.read('')
             console.log(`Input: '${input}'`)
-            basic.execute(input)
+            await basic.execute(input)
         } catch (error) {
             console.log(`Error reading: ${error}`)
         }
