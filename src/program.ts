@@ -26,7 +26,9 @@
  * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+import { Token, Tokenizer } from './lex'
 import { SourceLine } from './sourceline'
+import { ErrMsg } from './variables'
 export const MAXLINE = 65535
 
 export type RenumMap = { [key: number]: number }
@@ -132,9 +134,9 @@ export class Program {
      * Fix up any references on source line
      * @param sourceLine Line to fix
      * @param renumMap Mapping of old line numbers to new line numbers
-     * @returns
+     * @returns '' on success or error message
      */
-    public fixReferences(sourceLine: SourceLine, renumMap: RenumMap): string {
+    public fixReferences(sourceLine: SourceLine, renumMap: RenumMap): ErrMsg {
         // These are the statements we are trying to fix up.
         // Note that if any of the line numbers are not constants we have to abort the renumber
         // GOSUB #
@@ -147,7 +149,90 @@ export class Program {
         // ON ... GOTO #,#,#,#
         // ON ERROR THEN #
         // ON ERROR GOTO #
-        return ''
+        let line = ''
+        const tokenizer = new Tokenizer()
+        tokenizer.setLine(sourceLine.getSource())
+        let [tokenstr, token] = tokenizer.getToken()
+        switch (token) {
+            case Token.GOSUB:
+            case Token.GOTO:
+                line = tokenizer.getPrevious()
+                ;[tokenstr, token] = tokenizer.getToken()
+                if (token !== Token.NUMBER) {
+                    return `${line}MUST GO TO LINE NUMBER CONSTANT ON LINE ${sourceLine.getLineNum()}. NOT ${tokenstr}`
+                }
+                const newLine = renumMap[Number(tokenstr)]
+                if (newLine === undefined) {
+                    return `TARGET ${line}${tokenstr} NOT FOUND ON LINE ${sourceLine.getLineNum()}`
+                }
+                sourceLine.setSource(line + Number(newLine) + tokenizer.getRemainder())
+                break
+            case Token.ON:
+                // Find the THEN/GOTO in the line
+                while (token !== Token.THEN && token !== Token.GOTO && token !== Token.ENDINPUT) {
+                    ;[tokenstr, token] = tokenizer.getToken()
+                }
+                // It is syntactically invalid, but nothing to renumber so just return
+                if (token === Token.ENDINPUT) {
+                    return undefined
+                }
+                line = tokenizer.getPrevious()
+                ;[tokenstr, token] = tokenizer.getToken()
+                while (token === Token.NUMBER) {
+                    const newLine = renumMap[Number(tokenstr)]
+                    if (newLine === undefined) {
+                        return `TARGET LINE ${tokenstr} NOT FOUND ON LINE ${sourceLine.getLineNum()}`
+                    }
+                    line += String(newLine)
+                    ;[tokenstr, token] = tokenizer.getToken()
+                    if (token === Token.COMMA) {
+                        ;[tokenstr, token] = tokenizer.getToken()
+                        line += ', '
+                    }
+                }
+                if (token !== Token.ENDINPUT) {
+                    return `ON TARGETS MUST ALL BE NUMBERS FROM LINE ${sourceLine.getLineNum()}`
+                }
+                sourceLine.setSource(line + tokenstr + tokenizer.getRemainder())
+                break
+            case Token.IF:
+                // This can be complicated since you can nest IF statements.
+                // Find the THEN or GOTO for the statement
+                while (token !== Token.THEN && token !== Token.GOTO && token !== Token.ENDINPUT) {
+                    ;[tokenstr, token] = tokenizer.getToken()
+                }
+                if (token === Token.ENDINPUT) {
+                    // Not syntactically valid, but nothing on the line either to change
+                    return undefined
+                }
+                line = tokenizer.getPrevious()
+                let remain = tokenizer.getRemainder()
+                ;[tokenstr, token] = tokenizer.getToken()
+                if (token === Token.ENDINPUT) {
+                    // Not syntactically valid, but nothing on the line either to change
+                    return undefined
+                }
+                if (token === Token.NUMBER) {
+                    // This is a simple THEN # or GOTO #
+                    const newLine = renumMap[Number(tokenstr)]
+                    if (newLine === undefined) {
+                        return `TARGET LINE ${tokenstr} NOT FOUND ON LINE ${sourceLine.getLineNum()}`
+                    }
+                    sourceLine.setSource(line + String(newLine) + tokenizer.getRemainder())
+                    break
+                }
+                // We have to call ourselves recursively
+                let tempSource = new SourceLine(sourceLine.getLineNum(), remain)
+                let emsg = this.fixReferences(tempSource, renumMap)
+                if (emsg !== '') {
+                    return emsg
+                }
+                sourceLine.setSource(line + tempSource.getSource())
+                break
+            default:
+                return undefined
+        }
+        return undefined
     }
     /**
      * Renumber all the lines in the progra
@@ -155,12 +240,12 @@ export class Program {
      * @param increment Amount to increment each line by (default = 10)
      * @returns Any error when renumbering
      */
-    public Renum(firstLine: number = 10, increment: number = 10): string {
+    public Renum(firstLine: number = 10, increment: number = 10): ErrMsg {
         // Make sure we have legal values to increment by
         if (firstLine < 0 || firstLine > MAXLINE || !Number.isInteger(firstLine)) {
             return `Illegal starting line ${firstLine}`
         }
-        if (increment <= 1 || !Number.isInteger(increment)) {
+        if (increment < 1 || !Number.isInteger(increment)) {
             return `Illegal increment ${increment}`
         }
         if (firstLine + increment * (this.program.length - 1) > MAXLINE) {
@@ -171,21 +256,21 @@ export class Program {
         const backupSource: SourceLine[] = []
         for (let sourceLine of this.program) {
             backupSource.push(new SourceLine(sourceLine.getLineNum(), sourceLine.getSource()))
-            renumMap[firstLine] = sourceLine.getLineNum()
-            sourceLine.setLineNum(firstLine)
+            renumMap[sourceLine.getLineNum()] = firstLine
             firstLine += increment
         }
         // Now go through and fixup the gotos
         for (let sourceLine of this.program) {
             let error = this.fixReferences(sourceLine, renumMap)
-            if (error !== '') {
+            if (error !== undefined) {
                 // Something couldn't be renumbered, so restore the program
                 this.program = backupSource
                 return error
             }
+            sourceLine.setLineNum(renumMap[sourceLine.getLineNum()])
         }
         // Everything worked, so return it
-        return ''
+        return undefined
     }
     /**
      * Add/Update a source line

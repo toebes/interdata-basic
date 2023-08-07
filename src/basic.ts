@@ -101,6 +101,7 @@ export class Basic {
         [Token.WFM]: this.cmdWFM.bind(this),
         [Token.BSP]: this.cmdBSP.bind(this),
         [Token.ON]: this.cmdON.bind(this),
+        [Token.RENUM]: this.cmdRENUM.bind(this),
     }
 
     public async doRun() {
@@ -571,6 +572,22 @@ export class Basic {
         return ''
     }
 
+    private cmdRENUM(parsed: ParseResult): string {
+        if (this.isRunning) {
+            return this.programError('RENUM NOT ALLOWED IN RUNNING PROGRAM')
+        }
+
+        let start: number = parsed.start as number
+        let increment: number | undefined
+        if (parsed.increment !== undefined) {
+            increment = parsed.increment as number
+        }
+        const emsg = this.program.Renum(start, increment)
+        if (emsg !== undefined) {
+            this.io.WriteLine(emsg)
+        }
+        return ''
+    }
     private cmdRUN(parsed: ParseResult): string {
         if (parsed.line !== undefined) {
             // Find the line number
@@ -878,6 +895,8 @@ export class Basic {
             Token.ERROR,
         ]
         const tokenSpaceBefore = [
+            Token.GOTO,
+            Token.GOSUB,
             Token.EQUAL,
             Token.AND,
             Token.ERROR,
@@ -893,10 +912,10 @@ export class Basic {
         let [tokenstr, token] = this.tokenizer.getToken()
         while (token !== Token.ENDINPUT) {
             if (token === Token.INVALID || token === Token.REM) {
-                line += extra + tokenstr + this.tokenizer.getRemainder()
+                line += extra + tokenstr + ' ' + this.tokenizer.getRemainder()
                 token = Token.ENDINPUT
             } else {
-                if (tokenSpaceBefore.includes(token)) {
+                if (tokenSpaceBefore.includes(token) && line.length > 1) {
                     extra = ' '
                 }
                 line += extra + tokenstr

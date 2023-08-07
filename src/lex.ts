@@ -537,6 +537,13 @@ export class Tokenizer {
         }
         return this.line.slice(pos)
     }
+    public getPrevious(): string {
+        let pos = this.pos
+        if (this.stackpos < this.tokenstack.length) {
+            pos = this.tokenstack[this.stackpos].pos
+        }
+        return this.line.slice(0, pos)
+    }
     /**
      *
      * @param line New line to parse
