@@ -38,6 +38,8 @@ import {
     SyntaxElem,
     statementLookup,
     DIMSyntax,
+    DATASyntax,
+    READVarSyntax,
 } from './syntax';
 import { ErrMsg, Variables } from './variables';
 
@@ -65,6 +67,9 @@ export class Basic {
     protected fnInUse: { [id: string]: boolean } = {};
     protected gosubStack: number[] = [];
     protected pushedCmd: string = '';
+    protected dataPos: number = 0;
+    protected dataItems: ExprVal[] = [];
+    protected hasReadData = false;
 
     protected cmdLookup: Partial<
         Record<Token, (parsed: ParseResult) => string>
@@ -87,6 +92,8 @@ export class Basic {
         [Token.RETURN]: this.cmdRETURN.bind(this),
         [Token.IF]: this.cmdIF.bind(this),
         [Token.REM]: this.cmdREM.bind(this),
+        [Token.DATA]: this.cmdDATA.bind(this),
+        [Token.READ]: this.cmdREAD.bind(this),
     };
 
     public async doRun() {
@@ -159,8 +166,7 @@ export class Basic {
      */
     private cmdNEW(parsed: ParseResult): string {
         this.program.EraseRange(0, MAXLINE);
-        this.variables.New();
-        this.fnInUse = {};
+        this.resetRunState();
         return '';
     }
     public programError(msg: string) {
@@ -438,55 +444,56 @@ export class Basic {
     private cmdLET(parsed: ParseResult): string {
         let varname = parsed.variable as string;
         let isString = parsed.variable_type === Token.STRINGVAR;
+        let idx1 = parsed.index1 as number;
+        let idx2 = parsed.index2 as number;
+        let assignVal = parsed.expression;
         let emsg;
 
-        if (parsed.index1 === undefined) {
-            if (isString) {
-                emsg = this.variables.setString(
-                    varname,
-                    parsed.expression as string
-                );
-            } else {
-                emsg = this.variables.SetNumericVar(
-                    varname,
-                    Number(parsed.expression)
-                );
-            }
-        } else if (parsed.index2 === undefined) {
-            if (isString) {
-                emsg = this.variables.SetStringArray(
-                    varname,
-                    Number(parsed.index1),
-                    parsed.expression as string
-                );
-            } else {
-                emsg = this.variables.SetNumeric1DArray(
-                    varname,
-                    Number(parsed.index1),
-                    Number(parsed.expression)
-                );
-            }
-        } else {
-            if (isString) {
-                emsg = this.variables.setSubString(
-                    varname,
-                    Number(parsed.index1),
-                    Number(parsed.index2),
-                    parsed.expression as string
-                );
-            } else {
-                emsg = this.variables.SetNumeric2DArray(
-                    varname,
-                    Number(parsed.index1),
-                    Number(parsed.index2),
-                    Number(parsed.expression)
-                );
-            }
-        }
+        // We can only assign strings to strings and numbers to numbers
+        emsg = this.doAssign(isString, varname, idx1, idx2, assignVal);
         if (emsg !== undefined) {
             this.io.WriteLine(emsg);
         }
         return '';
+    }
+
+    private doAssign(
+        isString: boolean,
+        varname: string,
+        idx1: number,
+        idx2: number,
+        assignVal: ExprVal
+    ) {
+        let emsg;
+        if (isString && typeof assignVal !== 'string') {
+            emsg = 'MUST HAVE STRING TO ASSIGN TO STRING VARIABLE';
+        } else if (!isString && typeof assignVal !== 'number') {
+            emsg = 'MUST HAVE NUMBER TO ASSIGN TO NUMERIC VARIABLE';
+        } else if (isString) {
+            let value = assignVal as string;
+            if (idx1 === undefined) {
+                emsg = this.variables.setString(varname, value);
+            } else if (idx2 === undefined) {
+                emsg = this.variables.SetStringArray(varname, idx1, value);
+            } else {
+                emsg = this.variables.setSubString(varname, idx1, idx2, value);
+            }
+        } else {
+            let value = assignVal as number;
+            if (idx1 === undefined) {
+                emsg = this.variables.SetNumericVar(varname, value);
+            } else if (idx2 === undefined) {
+                emsg = this.variables.SetNumeric1DArray(varname, idx1, value);
+            } else {
+                emsg = this.variables.SetNumeric2DArray(
+                    varname,
+                    idx1,
+                    idx2,
+                    value
+                );
+            }
+        }
+        return emsg;
     }
 
     private cmdErase(parsed: ParseResult): string {
@@ -550,8 +557,29 @@ export class Basic {
         this.runSourceIndex = 0;
         this.forStack = [];
         this.gosubStack = [];
+        this.dataItems = [];
+        this.hasReadData = false;
     }
-
+    private getData(): ExprVal | undefined {
+        if (!this.hasReadData) {
+            this.fillData();
+            this.dataPos = 0;
+            this.hasReadData = true;
+        }
+        if (this.dataPos >= this.dataItems.length) {
+            return undefined;
+        }
+        return this.dataItems[this.dataPos++];
+    }
+    /**
+     * DATA Statement - We actually just ignore it.  When a READ statement comes along we will parse the code
+     * to find the data statements
+     * @param parsed Parsed command structure
+     * @returns
+     */
+    private cmdDATA(parsed: ParseResult): string {
+        return '';
+    }
     /**
      * REM Statement - just a remark to ignore
      * @param parsed Parsed command structure
@@ -567,6 +595,55 @@ export class Basic {
      */
     private cmdEND(parsed: ParseResult): string {
         this.isRunning = false;
+        return '';
+    }
+    private fillData() {
+        const programLines = this.program.getSourceCount();
+        for (let i = 0; i < programLines; i++) {
+            let foo = this.program.getSourceLine(i);
+            if (foo === undefined) {
+                break;
+            }
+            const tokenizer = new Tokenizer();
+            tokenizer.setLine(foo.getSource());
+            const [tokenstr, token] = tokenizer.getToken();
+            if (token === Token.DATA) {
+                while (true) {
+                    let parsed = this.Parse(tokenizer, DATASyntax);
+                    // If it failed to parse, let them know
+                    if (parsed.error !== undefined) {
+                        this.programError(parsed.error as string);
+                        return;
+                    }
+                    this.dataItems.push(parsed.dataitem);
+                    if (parsed.endinput !== undefined) {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    private cmdREAD(parsed: ParseResult): string {
+        while (parsed.variable !== undefined) {
+            let varname = parsed.variable as string;
+            let isString = parsed.variable_type === Token.STRINGVAR;
+            let idx1 = parsed.index1 as number;
+            let idx2 = parsed.index2 as number;
+            let item = this.getData();
+            if (item === undefined) {
+                this.isRunning = false;
+                return '';
+            }
+            let emsg = this.doAssign(isString, varname, idx1, idx2, item);
+            if (emsg !== undefined) {
+                this.io.WriteLine(emsg);
+            }
+            if (parsed.endinput !== undefined) {
+                return '';
+            }
+            parsed = this.Parse(this.tokenizer, READVarSyntax);
+        }
         return '';
     }
     private cmdDIM(parsed: ParseResult): string {
@@ -629,6 +706,7 @@ export class Basic {
      *
      **************************************************************************************************************/
     public Break() {
+        this.isRunning = false;
         this.io.WriteLine('*BREAK*');
     }
 

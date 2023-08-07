@@ -117,8 +117,12 @@ export const CALLParmSyntax: SyntaxElem[] = [
 // DATA <constant> [, <constant>]*
 export const DATASyntax: SyntaxElem[] = [
     { optional: [{ tok: Token.EXPRESSION, val: 'dataitem' }] },
-    { optional: [{ tok: Token.COMMA, val: 'comma' }] },
-    { optional: [{ tok: Token.ENDINPUT, val: 'endinput' }] },
+    { val: 'comend', optional: [{ tok: Token.COMMA, val: 'comma' }] },
+    {
+        val: 'comend',
+        needed: true,
+        optional: [{ tok: Token.ENDINPUT, val: 'endinput' }],
+    },
 ];
 
 // DEF FNx(L)= ANYTHING

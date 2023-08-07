@@ -33,6 +33,13 @@ export type RenumMap = { [key: number]: number };
 
 export class Program {
     protected program: SourceLine[] = [];
+    /**
+     * Get the number of source lines
+     * @returns Number of source lines in the program
+     */
+    public getSourceCount(): number {
+        return this.program.length;
+    }
 
     public getSourceLine(spot?: number): SourceLine | undefined {
         if (spot === undefined || spot < 0 || spot >= this.program.length) {
