@@ -95,6 +95,9 @@ export class Basic {
         [Token.READ]: this.cmdREAD.bind(this),
         [Token.RESTORE]: this.cmdRESTORE.bind(this),
         [Token.CALL]: this.cmdCALL.bind(this),
+        [Token.REW]: this.cmdREW.bind(this),
+        [Token.WFM]: this.cmdWFM.bind(this),
+        [Token.BSP]: this.cmdBSP.bind(this),
     }
 
     public async doRun() {
@@ -574,6 +577,33 @@ export class Basic {
      */
     private cmdCALL(parsed: ParseResult): string {
         // We can ignore everything on the line for now
+        return ''
+    }
+    /**
+     * REW unit Statement - Rewind a logical unit
+     * @param parsed Parsed command structure
+     * @returns Command to execute (nothing in this case)
+     */
+    private cmdREW(parsed: ParseResult): string {
+        this.io.Rewind(parsed.logicalUnit as number)
+        return ''
+    }
+    /**
+     * WFM unit Statement - Write a file mark on a logical unit
+     * @param parsed Parsed command structure
+     * @returns Command to execute (nothing in this case)
+     */
+    private cmdWFM(parsed: ParseResult): string {
+        this.io.WriteFileMark(parsed.logicalUnit as number)
+        return ''
+    }
+    /**
+     * BSP unit Statement - BackSpace a logical unit
+     * @param parsed Parsed command structure
+     * @returns Command to execute (nothing in this case)
+     */
+    private cmdBSP(parsed: ParseResult): string {
+        this.io.BackSpace(parsed.logicalUnit as number)
         return ''
     }
     /**
