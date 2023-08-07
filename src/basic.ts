@@ -91,6 +91,7 @@ export class Basic {
         [Token.IF]: this.cmdIF.bind(this),
         [Token.REM]: this.cmdREM.bind(this),
         [Token.DATA]: this.cmdDATA.bind(this),
+        [Token.STOP]: this.cmdSTOP.bind(this),
         [Token.READ]: this.cmdREAD.bind(this),
         [Token.RESTORE]: this.cmdRESTORE.bind(this),
     }
@@ -572,6 +573,21 @@ export class Basic {
      */
     private cmdEND(parsed: ParseResult): string {
         this.isRunning = false
+        return ''
+    }
+    /**
+     * STOP Statement - end program execution
+     * @param parsed Parsed command structure
+     * @returns
+     */
+    private cmdSTOP(parsed: ParseResult): string {
+        this.isRunning = false
+        let lineNum = ''
+        let sourceline = this.program.getSourceLine(this.runSourceIndex - 1)
+        if (sourceline !== undefined) {
+            lineNum = String(sourceline.getLineNum())
+        }
+        this.io.WriteLine(`STOP ${lineNum}`)
         return ''
     }
     private fillData() {
