@@ -92,6 +92,7 @@ export class Basic {
         [Token.REM]: this.cmdREM.bind(this),
         [Token.DATA]: this.cmdDATA.bind(this),
         [Token.READ]: this.cmdREAD.bind(this),
+        [Token.RESTORE]: this.cmdRESTORE.bind(this),
     }
 
     public async doRun() {
@@ -599,7 +600,11 @@ export class Basic {
             }
         }
     }
-
+    /**
+     * Read one or more data items.
+     * @param parsed Parsed command structure
+     * @returns command to execute
+     */
     private cmdREAD(parsed: ParseResult): string {
         while (parsed.variable !== undefined) {
             let varname = parsed.variable as string
@@ -622,6 +627,20 @@ export class Basic {
         }
         return ''
     }
+    /**
+     * Restart the Data read at the first data statement
+     * @param parsed Parsed command structure
+     * @returns command to execute
+     */
+    private cmdRESTORE(parsed: ParseResult): string {
+        this.dataPos = 0
+        return ''
+    }
+    /**
+     * DIM a variable (declare space)
+     * @param parsed Parsed command structure
+     * @returns command to execute
+     */
     private cmdDIM(parsed: ParseResult): string {
         do {
             if (parsed.variable === undefined) {
@@ -665,6 +684,12 @@ export class Basic {
         }
         return ''
     }
+    /**
+     * DEFine a global function
+     * @param parsed Parsed command structure
+     * @returns command to execute
+     */
+
     private cmdDEF(parsed: ParseResult): string {
         const parm = parsed.parm as string
         const fndef = parsed.fndef as string
