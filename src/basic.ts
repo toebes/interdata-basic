@@ -77,6 +77,7 @@ export class Basic {
     protected cmdLookup: Partial<Record<Token, (parsed: ParseResult) => Promise<string>>> = {
         [Token.RUN]: this.cmdRUN.bind(this),
         [Token.LIST]: this.cmdLIST.bind(this),
+        [Token.LOAD]: this.cmdLOAD.bind(this),
         [Token.ERASE]: this.cmdErase.bind(this),
         [Token.LET]: this.cmdLET.bind(this),
         [Token.NEW]: this.cmdNEW.bind(this),
@@ -130,7 +131,6 @@ export class Basic {
 
     public async execute(cmd: string, lineNum?: number): Promise<void> {
         return new Promise(async (resolve) => {
-            const startCmd = cmd
             while (cmd !== '') {
                 if (this.isTracing) {
                     if (lineNum !== undefined) {
@@ -617,6 +617,20 @@ export class Basic {
                 this.io.WriteFileMark(unit)
             })
             return resolve('')
+        })
+    }
+
+    private cmdLOAD(parsed: ParseResult): Promise<string> {
+        return new Promise(async (resolve) => {
+            let unit = parsed.logicalUnit as number | undefined
+            while (true) {
+                let line = await this.io.Read(unit)
+                if (line === undefined) {
+                    return resolve('')
+                }
+                //
+                await this.execute(line, 0)
+            }
         })
     }
 

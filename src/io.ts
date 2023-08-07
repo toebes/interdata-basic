@@ -131,13 +131,12 @@ export class IO {
      * @param unit Logical Unit
      * @returns String of bytes from unit
      */
-    public async Read(unit = 5): Promise<string> {
-        return new Promise<string>((resolve, reject) => {
+    public async Read(unit = 5): Promise<string | undefined> {
+        return new Promise<string | undefined>((resolve) => {
             this.EOFonLastIO = false
             const logicalUnit = this.GetUnit(unit)
             logicalUnit.inputFunction().then((result) => {
                 if (result === undefined) {
-                    result = ''
                     this.EOFonLastIO = true
                 }
                 resolve(result)
