@@ -1,2 +1,2 @@
 # interdata-basic
-Interdata 7/16 Basic Interpreter
+This is a web based implementation of a Basic interpreter for an [Interdata 7/16 processor]([https://bitsavers.org/pdf/interdata/16bit/7-16/7-16_Brochure_1973.pdf). The original documentation of the language can be found at  [bitsavers.org](http://www.bitsavers.org/pdf/interdata/lang/29-338r03_BASIC_Lang_Ref_Jan75.pdf) and a summary of what is implemented at [language.md](https:language.md)
