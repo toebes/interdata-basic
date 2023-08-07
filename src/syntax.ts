@@ -1,4 +1,4 @@
-import { Token, Tokenizer } from './lex';
+import { Token, Tokenizer } from './lex'
 
 /**
  * Copyright (c) 2023 John Toebes
@@ -28,19 +28,19 @@ import { Token, Tokenizer } from './lex';
  * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-export type ExprVal = string | number;
-export type ParseResult = { [id: string]: ExprVal };
-export type ExpType = 'numeric' | 'string';
+export type ExprVal = string | number
+export type ParseResult = { [id: string]: ExprVal }
+export type ExpType = 'numeric' | 'string'
 export type SyntaxElem = {
-    tok?: Token;
-    val?: string;
-    oneof?: SyntaxElem[];
-    optional?: SyntaxElem[];
-    include?: SyntaxElem[];
-    needed?: boolean;
-    epxtype?: ExpType;
-};
-export type SyntaxLookup = Partial<Record<Token, SyntaxElem[]>>;
+    tok?: Token
+    val?: string
+    oneof?: SyntaxElem[]
+    optional?: SyntaxElem[]
+    include?: SyntaxElem[]
+    needed?: boolean
+    epxtype?: ExpType
+}
+export type SyntaxLookup = Partial<Record<Token, SyntaxElem[]>>
 
 // A reference to a variable.  It can optionally have 1 or 2 indexes surrounted by parenthesis
 export const VariableRefSyntax: SyntaxElem[] = [
@@ -62,7 +62,7 @@ export const VariableRefSyntax: SyntaxElem[] = [
             { tok: Token.RPAREN },
         ],
     },
-];
+]
 
 export const ONUNITSyntax: SyntaxElem[] = [
     {
@@ -73,12 +73,12 @@ export const ONUNITSyntax: SyntaxElem[] = [
             { tok: Token.RPAREN },
         ],
     },
-];
+]
 
 export const LOGICALUNITSyntax: SyntaxElem[] = [
     { tok: Token.EXPRESSION, val: 'logicalUnit' },
     { tok: Token.ENDINPUT },
-];
+]
 
 export const STARTTOENDSyntax: SyntaxElem[] = [
     {
@@ -92,27 +92,24 @@ export const STARTTOENDSyntax: SyntaxElem[] = [
             },
         ],
     },
-];
+]
 
-export const NOPARAMS: SyntaxElem[] = [{ tok: Token.ENDINPUT }];
+export const NOPARAMS: SyntaxElem[] = [{ tok: Token.ENDINPUT }]
 
 // BSP <logical-unit>
-export const BSPSyntax = LOGICALUNITSyntax;
+export const BSPSyntax = LOGICALUNITSyntax
 
 // CALL number [, expression]
 export const CALLSyntax: SyntaxElem[] = [
     { tok: Token.EXPRESSION, val: 'subroutineID', epxtype: 'numeric' },
-];
+]
 
 export const CALLParmSyntax: SyntaxElem[] = [
     {
-        optional: [
-            { tok: Token.COMMA },
-            { tok: Token.EXPRESSION, val: 'param' },
-        ],
+        optional: [{ tok: Token.COMMA }, { tok: Token.EXPRESSION, val: 'param' }],
     },
     { optional: [{ tok: Token.ENDINPUT, val: 'endinput' }] },
-];
+]
 
 // DATA <constant> [, <constant>]*
 export const DATASyntax: SyntaxElem[] = [
@@ -123,7 +120,7 @@ export const DATASyntax: SyntaxElem[] = [
         needed: true,
         optional: [{ tok: Token.ENDINPUT, val: 'endinput' }],
     },
-];
+]
 
 // DEF FNx(L)= ANYTHING
 // Note that we just take everything after the = and process it later
@@ -133,7 +130,7 @@ export const DEFSyntax: SyntaxElem[] = [
     { tok: Token.VARIABLE, val: 'parm', epxtype: 'string' },
     { tok: Token.RPAREN },
     { tok: Token.EQUAL },
-];
+]
 
 // DIM variable(<bounds1> [, <bounds2>])[,variable(<bounds1> [, <bounds2>])]*
 export const DIMSyntax: SyntaxElem[] = [
@@ -153,13 +150,13 @@ export const DIMSyntax: SyntaxElem[] = [
         needed: true,
         optional: [{ tok: Token.ENDINPUT, val: 'endinput' }],
     },
-];
+]
 
 // END
-export const ENDSyntax = NOPARAMS;
+export const ENDSyntax = NOPARAMS
 
 // ENDTRACE
-export const ENDTRACESyntax = NOPARAMS;
+export const ENDTRACESyntax = NOPARAMS
 
 // FOR <var> = <start> TO <end> [ STEP <step> ]
 export const FORSyntax: SyntaxElem[] = [
@@ -169,25 +166,22 @@ export const FORSyntax: SyntaxElem[] = [
     { tok: Token.TO },
     { tok: Token.EXPRESSION, val: 'end', epxtype: 'numeric' },
     {
-        optional: [
-            { tok: Token.STEP },
-            { tok: Token.EXPRESSION, val: 'step', epxtype: 'numeric' },
-        ],
+        optional: [{ tok: Token.STEP }, { tok: Token.EXPRESSION, val: 'step', epxtype: 'numeric' }],
     },
     { tok: Token.ENDINPUT },
-];
+]
 
 // GOSUB <line>
 export const GOSUBSyntax: SyntaxElem[] = [
     { tok: Token.EXPRESSION, val: 'line', epxtype: 'numeric' },
     { tok: Token.ENDINPUT },
-];
+]
 
 // GOTO <line>
 export const GOTOSyntax: SyntaxElem[] = [
     { tok: Token.EXPRESSION, val: 'line', epxtype: 'numeric' },
     { tok: Token.ENDINPUT },
-];
+]
 
 // IF <expr> GOTO <number>
 // IF <expr> THEN <number>
@@ -209,7 +203,7 @@ export const IFSyntax: SyntaxElem[] = [
         ],
     },
     { optional: [{ tok: Token.THEN, val: 'then' }] },
-];
+]
 
 // input [ON (<unit>[,<record>])] variable-list
 export const INPUTSyntax: SyntaxElem[] = [
@@ -233,25 +227,25 @@ export const INPUTSyntax: SyntaxElem[] = [
     },
     { include: VariableRefSyntax },
     { optional: [{ tok: Token.ENDINPUT, val: 'endinput' }] },
-];
+]
 
 export const INPUTVarSyntax: SyntaxElem[] = [
     { optional: [{ tok: Token.COMMA }, { include: VariableRefSyntax }] },
     { optional: [{ tok: Token.ENDINPUT, val: 'endinput' }] },
-];
+]
 // LET <var>=<expr>
 export const LETSyntax: SyntaxElem[] = [
     { include: VariableRefSyntax },
     { tok: Token.EQUAL },
     { tok: Token.EXPRESSION, val: 'expression' },
     { tok: Token.ENDINPUT },
-];
+]
 
 // NEXT <var>
 export const NEXTSyntax: SyntaxElem[] = [
     { tok: Token.VARIABLE, val: 'var' },
     { tok: Token.ENDINPUT, val: 'endinput' },
-];
+]
 
 //
 export const ONSyntax: SyntaxElem[] = [
@@ -299,7 +293,7 @@ export const ONSyntax: SyntaxElem[] = [
     },
     { optional: [{ tok: Token.COMMA, val: 'comma' }] },
     { optional: [{ tok: Token.ENDINPUT, val: 'endinput' }] },
-];
+]
 
 // Print [ON (<unit>)] <expr> [,|;]?
 export const PRINTVarSyntax: SyntaxElem[] = [
@@ -328,7 +322,7 @@ export const PRINTVarSyntax: SyntaxElem[] = [
             { optional: [{ tok: Token.ENDINPUT, val: 'endinput' }] },
         ],
     },
-];
+]
 export const PRINTSyntax: SyntaxElem[] = [
     { include: ONUNITSyntax },
     {
@@ -339,34 +333,34 @@ export const PRINTSyntax: SyntaxElem[] = [
         ],
     },
     { include: PRINTVarSyntax },
-];
+]
 // RANDOM
-export const RANDOMSyntax = NOPARAMS;
+export const RANDOMSyntax = NOPARAMS
 
 // READ variable-list
 export const READSyntax: SyntaxElem[] = [
     { include: VariableRefSyntax },
     { optional: [{ tok: Token.ENDINPUT, val: 'endinput' }] },
-];
+]
 
 export const READVarSyntax: SyntaxElem[] = [
     { optional: [{ tok: Token.COMMA }, { include: VariableRefSyntax }] },
     { optional: [{ tok: Token.ENDINPUT, val: 'endinput' }] },
-];
+]
 // RESTORE
-export const RESTORESyntax = NOPARAMS;
+export const RESTORESyntax = NOPARAMS
 // RETURN
-export const RETURNSyntax = NOPARAMS;
+export const RETURNSyntax = NOPARAMS
 
 // REW <logical-unit>
-export const REWSyntax = LOGICALUNITSyntax;
+export const REWSyntax = LOGICALUNITSyntax
 // SETTRACE
-export const SETTRACESyntax = NOPARAMS;
+export const SETTRACESyntax = NOPARAMS
 // STOP
-export const STOPSyntax = NOPARAMS;
+export const STOPSyntax = NOPARAMS
 
 // WFM <logical-unit>
-export const WFMSyntax = LOGICALUNITSyntax;
+export const WFMSyntax = LOGICALUNITSyntax
 
 // LIST
 // LIST ON '(' number ')'
@@ -376,20 +370,20 @@ export const LISTSyntax: SyntaxElem[] = [
     { include: ONUNITSyntax },
     { include: STARTTOENDSyntax },
     { tok: Token.ENDINPUT },
-];
+]
 
 // LOAD <unit>
-export const LOADSyntax = LOGICALUNITSyntax;
+export const LOADSyntax = LOGICALUNITSyntax
 // PAUSE
-export const PAUSESyntax = NOPARAMS;
+export const PAUSESyntax = NOPARAMS
 // NEW
-export const NEWSyntax = NOPARAMS;
+export const NEWSyntax = NOPARAMS
 
 // RUN [<statement>]
 export const RUNSyntax: SyntaxElem[] = [
     { optional: [{ tok: Token.EXPRESSION, val: 'line', epxtype: 'numeric' }] },
     { tok: Token.ENDINPUT },
-];
+]
 // RENUM [<start>[,<increment>]]
 export const RENUMSyntax: SyntaxElem[] = [
     {
@@ -408,14 +402,11 @@ export const RENUMSyntax: SyntaxElem[] = [
         ],
     },
     { tok: Token.ENDINPUT },
-];
+]
 // SIZE
-export const SIZESyntax = NOPARAMS;
+export const SIZESyntax = NOPARAMS
 // ERASE [<start>[TO <increment>]]
-export const ERASESyntax: SyntaxElem[] = [
-    { include: STARTTOENDSyntax },
-    { tok: Token.ENDINPUT },
-];
+export const ERASESyntax: SyntaxElem[] = [{ include: STARTTOENDSyntax }, { tok: Token.ENDINPUT }]
 
 export const statementLookup: SyntaxLookup = {
     [Token.BSP]: BSPSyntax,
@@ -450,4 +441,4 @@ export const statementLookup: SyntaxLookup = {
     [Token.RENUM]: RENUMSyntax,
     [Token.SIZE]: SIZESyntax,
     [Token.ERASE]: ERASESyntax,
-};
+}

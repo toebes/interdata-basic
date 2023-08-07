@@ -25,33 +25,33 @@
  * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
  * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-export type OutputFunction = (str: string) => void;
-export type InputFunction = () => Promise<string | undefined>;
+export type OutputFunction = (str: string) => void
+export type InputFunction = () => Promise<string | undefined>
 
 export type LogicalUnit = {
-    inputFunction: InputFunction;
-    outputFunction: OutputFunction;
-    tabPos: number;
-};
+    inputFunction: InputFunction
+    outputFunction: OutputFunction
+    tabPos: number
+}
 
 export class IO {
-    protected units: { [id: number]: LogicalUnit } = {};
-    protected EOFonLastIO = false;
+    protected units: { [id: number]: LogicalUnit } = {}
+    protected EOFonLastIO = false
     /**
      * Return an input string from the default input.  In this case we simulate EOF
      * @returns Input string
      */
     protected defaultInput(): Promise<string | undefined> {
         return new Promise((resolve, reject) => {
-            resolve(undefined);
-        });
+            resolve(undefined)
+        })
     }
     /**
      * Write output to an unassigned unit
      * @param str String to output
      */
     protected defaultOutput(str: string): void {
-        console.log(`Output:${str}`);
+        console.log(`Output:${str}`)
     }
     /**
      *
@@ -59,16 +59,16 @@ export class IO {
      * @returns Logical unit if found in map or dummy unit
      */
     public GetUnit(unit = 5): LogicalUnit {
-        const lookupUnit = this.mapUnitNumber(unit);
-        let result: LogicalUnit = this.units[lookupUnit];
+        const lookupUnit = this.mapUnitNumber(unit)
+        let result: LogicalUnit = this.units[lookupUnit]
         if (result === undefined) {
             result = {
                 inputFunction: this.defaultInput,
                 outputFunction: this.defaultOutput,
                 tabPos: 0,
-            };
+            }
         }
-        return result;
+        return result
     }
     /**
      * Map a unit string to a unit number.  non-numbers convert to 0 and numbers are truncated to an integer
@@ -77,9 +77,9 @@ export class IO {
      */
     protected mapUnitNumber(unit: number) {
         if (isNaN(unit)) {
-            return 0;
+            return 0
         }
-        return Math.floor(unit);
+        return Math.floor(unit)
     }
     /**
      * Assign input/output vectors to a unit
@@ -92,20 +92,20 @@ export class IO {
         inputFunction: InputFunction = this.defaultInput,
         outputFunction: OutputFunction = this.defaultOutput
     ) {
-        const lookupUnit = this.mapUnitNumber(unit);
+        const lookupUnit = this.mapUnitNumber(unit)
         this.units[lookupUnit] = {
             inputFunction: inputFunction,
             outputFunction: outputFunction,
             tabPos: 0,
-        };
+        }
     }
     /**
      * Disconnect I/O to a logical unit
      * @param unit Logical unit
      */
     public CloseUnit(unit: number): void {
-        const lookupUnit = this.mapUnitNumber(unit);
-        delete this.units[lookupUnit];
+        const lookupUnit = this.mapUnitNumber(unit)
+        delete this.units[lookupUnit]
     }
     /**
      * Read a string of bytes from a unit
@@ -114,23 +114,23 @@ export class IO {
      */
     public async Read(unit = 5): Promise<string> {
         return new Promise<string>((resolve, reject) => {
-            this.EOFonLastIO = false;
-            const logicalUnit = this.GetUnit(unit);
+            this.EOFonLastIO = false
+            const logicalUnit = this.GetUnit(unit)
             logicalUnit.inputFunction().then((result) => {
                 if (result === undefined) {
-                    result = '';
-                    this.EOFonLastIO = true;
+                    result = ''
+                    this.EOFonLastIO = true
                 }
-                resolve(result);
-            });
-        });
+                resolve(result)
+            })
+        })
     }
     /**
      * Did the last read operation hit the end of the input?
      * @returns Boolean indicating last operation hit EOF
      */
     public isEOF(): boolean {
-        return this.EOFonLastIO;
+        return this.EOFonLastIO
     }
     /**
      * Write bytes to a logical unit
@@ -138,8 +138,8 @@ export class IO {
      * @param str String to output
      */
     public Write(unit = 5, str: string) {
-        const logicalUnit = this.GetUnit(unit);
-        logicalUnit.outputFunction(str);
+        const logicalUnit = this.GetUnit(unit)
+        logicalUnit.outputFunction(str)
     }
     /**
      * Write a full line (with carriage return) to a logical unit
@@ -147,7 +147,7 @@ export class IO {
      * @param str String to output
      */
     public WriteLine(str: string, unit = 5) {
-        this.Write(unit, str + '\r\n');
+        this.Write(unit, str + '\r\n')
     }
     /**
      * Rewind the logical unit to the beginnign (if it supports it)
@@ -155,7 +155,7 @@ export class IO {
      */
     public Rewind(unit: number) {
         // const logicalUnit = this.GetUnit(unit);
-        console.log(`Rewind unit ${unit}`);
+        console.log(`Rewind unit ${unit}`)
     }
     /**
      * Write a file mark (end of record) to the logical unit (if it supports it)
@@ -163,7 +163,7 @@ export class IO {
      */
     public WriteFileMark(unit: number) {
         // const logicalUnit = this.GetUnit(unit);
-        console.log(`Write File Mark ${unit}`);
+        console.log(`Write File Mark ${unit}`)
     }
     /**
      * Backspace the logical unit one record (if it supports it)
@@ -171,6 +171,6 @@ export class IO {
      */
     public BackSpace(unit: number) {
         // const logicalUnit = this.GetUnit(unit);
-        console.log(`BackSpace ${unit}`);
+        console.log(`BackSpace ${unit}`)
     }
 }

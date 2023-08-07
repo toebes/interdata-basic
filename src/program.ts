@@ -26,26 +26,26 @@
  * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-import { SourceLine } from './sourceline';
-export const MAXLINE = 65535;
+import { SourceLine } from './sourceline'
+export const MAXLINE = 65535
 
-export type RenumMap = { [key: number]: number };
+export type RenumMap = { [key: number]: number }
 
 export class Program {
-    protected program: SourceLine[] = [];
+    protected program: SourceLine[] = []
     /**
      * Get the number of source lines
      * @returns Number of source lines in the program
      */
     public getSourceCount(): number {
-        return this.program.length;
+        return this.program.length
     }
 
     public getSourceLine(spot?: number): SourceLine | undefined {
         if (spot === undefined || spot < 0 || spot >= this.program.length) {
-            return undefined;
+            return undefined
         }
-        return this.program[spot];
+        return this.program[spot]
     }
     /**
      * Find the index in the program for a given line
@@ -55,44 +55,44 @@ export class Program {
      */
     public findLineIndex(lineNum: number): number | undefined {
         // For efficiency, let's do a binary search
-        let low = 0;
-        let high = this.program.length - 1;
+        let low = 0
+        let high = this.program.length - 1
         // If we have no lines or the number is beyond the end of the
         // program so far, just return undefined
         if (high < 0 || this.program[high].getLineNum() < lineNum) {
-            return undefined;
+            return undefined
         }
         // We know that it is going to be inserted somewhere, just figure out where
         while (high > low) {
-            const spot = Math.round((low + high) / 2);
-            const spotLine = this.program[spot].getLineNum();
+            const spot = Math.round((low + high) / 2)
+            const spotLine = this.program[spot].getLineNum()
             if (lineNum === spotLine) {
-                return spot;
+                return spot
             }
             if (lineNum > spotLine) {
-                low = spot;
+                low = spot
             } else {
-                high = spot - 1;
+                high = spot - 1
             }
         }
-        let result = Math.max(low, high);
-        const endLine = this.program[result].getLineNum();
+        let result = Math.max(low, high)
+        const endLine = this.program[result].getLineNum()
         if (lineNum > endLine) {
-            result++;
+            result++
         }
-        return result;
+        return result
     }
     public New(): void {
-        this.program = [];
+        this.program = []
     }
     /**
      * Erase a single line in the program
      * @param lineNum Line number to erase
      */
     public Erase(lineNum: number): void {
-        const spot = this.findLineIndex(lineNum);
+        const spot = this.findLineIndex(lineNum)
         if (spot !== undefined && this.program[spot].getLineNum() === lineNum) {
-            this.program.splice(spot, 1);
+            this.program.splice(spot, 1)
         }
     }
     /**
@@ -101,13 +101,13 @@ export class Program {
      * @param lastLine Last line number to erase
      */
     public EraseRange(firstLine: number, lastLine: number): void {
-        const firstSpot = this.findLineIndex(firstLine);
+        const firstSpot = this.findLineIndex(firstLine)
         if (firstSpot !== undefined) {
-            let lastSpot = this.findLineIndex(lastLine);
+            let lastSpot = this.findLineIndex(lastLine)
             if (lastSpot === undefined) {
-                lastSpot = this.program.length - 1;
+                lastSpot = this.program.length - 1
             }
-            this.program.splice(firstSpot, 1 + lastSpot - firstSpot);
+            this.program.splice(firstSpot, 1 + lastSpot - firstSpot)
         }
     }
     /**
@@ -116,23 +116,17 @@ export class Program {
      * @param endLine Last line number to return (Default end of program)
      * @returns Array of source lines for the range
      */
-    public List(
-        startLine: number = 0,
-        endLine: number = MAXLINE + 1
-    ): SourceLine[] {
-        const firstSpot = this.findLineIndex(startLine);
+    public List(startLine: number = 0, endLine: number = MAXLINE + 1): SourceLine[] {
+        const firstSpot = this.findLineIndex(startLine)
         if (firstSpot === undefined) {
-            return [];
+            return []
         }
-        let lastSpot = this.findLineIndex(endLine);
-        if (
-            lastSpot !== undefined &&
-            this.program[lastSpot].getLineNum() <= endLine
-        ) {
-            lastSpot++;
+        let lastSpot = this.findLineIndex(endLine)
+        if (lastSpot !== undefined && this.program[lastSpot].getLineNum() <= endLine) {
+            lastSpot++
         }
         // Slice it based on the starting / ending number
-        return this.program.slice(firstSpot, lastSpot);
+        return this.program.slice(firstSpot, lastSpot)
     }
     /**
      * Fix up any references on source line
@@ -153,7 +147,7 @@ export class Program {
         // ON ... GOTO #,#,#,#
         // ON ERROR THEN #
         // ON ERROR GOTO #
-        return '';
+        return ''
     }
     /**
      * Renumber all the lines in the progra
@@ -163,41 +157,35 @@ export class Program {
      */
     public Renum(firstLine: number = 10, increment: number = 10): string {
         // Make sure we have legal values to increment by
-        if (
-            firstLine < 0 ||
-            firstLine > MAXLINE ||
-            !Number.isInteger(firstLine)
-        ) {
-            return `Illegal starting line ${firstLine}`;
+        if (firstLine < 0 || firstLine > MAXLINE || !Number.isInteger(firstLine)) {
+            return `Illegal starting line ${firstLine}`
         }
         if (increment <= 1 || !Number.isInteger(increment)) {
-            return `Illegal increment ${increment}`;
+            return `Illegal increment ${increment}`
         }
         if (firstLine + increment * (this.program.length - 1) > MAXLINE) {
-            return `Renum would make line numbers out of range`;
+            return `Renum would make line numbers out of range`
         }
         // remember what line numbers got changed from and to so we can fix up the gotos
-        const renumMap: RenumMap = {};
-        const backupSource: SourceLine[] = [];
+        const renumMap: RenumMap = {}
+        const backupSource: SourceLine[] = []
         for (let sourceLine of this.program) {
-            backupSource.push(
-                new SourceLine(sourceLine.getLineNum(), sourceLine.getSource())
-            );
-            renumMap[firstLine] = sourceLine.getLineNum();
-            sourceLine.setLineNum(firstLine);
-            firstLine += increment;
+            backupSource.push(new SourceLine(sourceLine.getLineNum(), sourceLine.getSource()))
+            renumMap[firstLine] = sourceLine.getLineNum()
+            sourceLine.setLineNum(firstLine)
+            firstLine += increment
         }
         // Now go through and fixup the gotos
         for (let sourceLine of this.program) {
-            let error = this.fixReferences(sourceLine, renumMap);
+            let error = this.fixReferences(sourceLine, renumMap)
             if (error !== '') {
                 // Something couldn't be renumbered, so restore the program
-                this.program = backupSource;
-                return error;
+                this.program = backupSource
+                return error
             }
         }
         // Everything worked, so return it
-        return '';
+        return ''
     }
     /**
      * Add/Update a source line
@@ -206,19 +194,19 @@ export class Program {
      */
     public addLine(linenum: number, source: string): void {
         // Figure out where we should put this line
-        const spot = this.findLineIndex(linenum);
+        const spot = this.findLineIndex(linenum)
         // If the line already existed, just replace the source for the line
         if (spot !== undefined && this.program[spot].getLineNum() == linenum) {
-            this.program[spot].setSource(source);
+            this.program[spot].setSource(source)
         } else {
             // This line number doesn't exist so create a new one
-            const newSourceLine = new SourceLine(linenum, source);
+            const newSourceLine = new SourceLine(linenum, source)
             if (spot === undefined) {
                 // If it is beyond the end of the program, just add it
-                this.program.push(newSourceLine);
+                this.program.push(newSourceLine)
             } else {
                 // Otherwise insert it before the line we found
-                this.program.splice(spot, 0, newSourceLine);
+                this.program.splice(spot, 0, newSourceLine)
             }
         }
     }
@@ -227,10 +215,8 @@ export class Program {
      * @returns Estimated length of program
      */
     public Size(): string {
-        let size = 0;
-        this.program.forEach(
-            (sourceLine) => (size += sourceLine.getSource.length + 3)
-        );
-        return `${size} BYTES USED`;
+        let size = 0
+        this.program.forEach((sourceLine) => (size += sourceLine.getSource.length + 3))
+        return `${size} BYTES USED`
     }
 }

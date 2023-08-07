@@ -430,7 +430,7 @@ const LexAction: { [key: string]: TokenAction } = {
     VAL: TokenAction.K_VAL,
     /* WFM */ WF: TokenAction.GATHER,
     WFM: TokenAction.K_WFM,
-};
+}
 
 const MapLexToken: { [key in TokenAction]?: Token } = {
     [TokenAction.CARET]: Token.CARET,
@@ -516,36 +516,36 @@ const MapLexToken: { [key in TokenAction]?: Token } = {
     [TokenAction.K_NEW]: Token.NEW,
     [TokenAction.K_PAUSE]: Token.PAUSE,
     [TokenAction.K_SIZE]: Token.SIZE,
-};
+}
 
 export type TokenItem = {
-    tok: Token;
-    tokenstr: string;
-    pos: number;
-};
+    tok: Token
+    tokenstr: string
+    pos: number
+}
 
 export class Tokenizer {
-    protected line: string = '';
-    protected pos: number = 0;
-    protected tokenstack: TokenItem[] = [];
-    protected stackpos: number = 0;
+    protected line: string = ''
+    protected pos: number = 0
+    protected tokenstack: TokenItem[] = []
+    protected stackpos: number = 0
 
     public getRemainder(): string {
-        let pos = this.pos;
+        let pos = this.pos
         if (this.stackpos < this.tokenstack.length) {
-            pos = this.tokenstack[this.stackpos].pos;
+            pos = this.tokenstack[this.stackpos].pos
         }
-        return this.line.slice(pos);
+        return this.line.slice(pos)
     }
     /**
      *
      * @param line New line to parse
      */
     public setLine(line: string) {
-        this.line = line;
-        this.pos = 0;
-        this.stackpos = 0;
-        this.tokenstack = [];
+        this.line = line
+        this.pos = 0
+        this.stackpos = 0
+        this.tokenstack = []
     }
     /**
      * Get the next character on the line
@@ -553,11 +553,11 @@ export class Tokenizer {
      */
     public nextChar(): string {
         if (this.pos >= this.line.length) {
-            return '';
+            return ''
         }
-        const char = this.line.substring(this.pos, this.pos + 1);
-        this.pos++;
-        return char;
+        const char = this.line.substring(this.pos, this.pos + 1)
+        this.pos++
+        return char
     }
 
     /**
@@ -565,24 +565,24 @@ export class Tokenizer {
      * @returns Next non-blank character on the line or '' for nothing remaining
      */
     public nextNonBlank(): string {
-        let char = this.nextChar();
+        let char = this.nextChar()
         while (char === ' ') {
-            char = this.nextChar();
+            char = this.nextChar()
         }
-        return char;
+        return char
     }
     public pushBack(char: string): void {
         if (char !== '' && this.pos > 0) {
-            this.pos--;
+            this.pos--
         }
     }
     public getDigits(initial: string): [string, string] {
-        let char = this.nextChar();
+        let char = this.nextChar()
         while (char >= '0' && char <= '9') {
-            initial += char;
-            char = this.nextChar();
+            initial += char
+            char = this.nextChar()
         }
-        return [initial, char];
+        return [initial, char]
     }
     /**
      *
@@ -590,163 +590,160 @@ export class Tokenizer {
      */
 
     public parseToken(): TokenItem {
-        let char = this.nextNonBlank().toUpperCase();
+        let char = this.nextNonBlank().toUpperCase()
         if (char === '') {
-            return { pos: this.pos, tokenstr: char, tok: Token.ENDINPUT };
+            return { pos: this.pos, tokenstr: char, tok: Token.ENDINPUT }
         }
-        const pos = this.pos - 1;
-        let action = LexAction[char];
+        const pos = this.pos - 1
+        let action = LexAction[char]
         if (action === undefined) {
-            return { pos: pos, tokenstr: char, tok: Token.INVALID };
+            return { pos: pos, tokenstr: char, tok: Token.INVALID }
         }
-        let gathered = char;
-        let tokentype = Token.INVALID;
+        let gathered = char
+        let tokentype = Token.INVALID
         switch (action) {
             case TokenAction.DQUOTE:
                 // Gather until we get the end quote
-                gathered = '';
-                char = this.nextChar();
+                gathered = ''
+                char = this.nextChar()
                 while (char !== '"') {
                     if (char === undefined) {
                         return {
                             pos: pos,
                             tokenstr: gathered,
                             tok: Token.INVALID,
-                        };
+                        }
                     }
-                    gathered += char;
-                    char = this.nextChar();
+                    gathered += char
+                    char = this.nextChar()
                 }
-                return { pos: pos, tokenstr: gathered, tok: Token.STRING };
+                return { pos: pos, tokenstr: gathered, tok: Token.STRING }
 
             case TokenAction.DIGIT:
                 // Parse a number of the form [0-9]*[.][0-9]*[E[+-]?[0-9]*]
                 if (char !== '.') {
-                    [gathered, char] = this.getDigits(gathered);
+                    ;[gathered, char] = this.getDigits(gathered)
                     if (char === '.') {
-                        gathered += char;
+                        gathered += char
                     }
                 }
                 if (char === '.') {
-                    [gathered, char] = this.getDigits(gathered);
+                    ;[gathered, char] = this.getDigits(gathered)
                 }
                 // See if they have an exponent
                 if (char.toUpperCase() === 'E') {
-                    gathered += char;
-                    char = this.nextNonBlank();
+                    gathered += char
+                    char = this.nextNonBlank()
                     // Get the optional sign
                     if (char === '+' || char === '-') {
-                        gathered += char;
-                        char = this.nextNonBlank();
+                        gathered += char
+                        char = this.nextNonBlank()
                     }
                     if (char < '0' || char > '9') {
                         return {
                             pos: pos,
                             tokenstr: gathered,
                             tok: Token.INVALID,
-                        };
+                        }
                     }
-                    [gathered, char] = this.getDigits(gathered);
+                    ;[gathered, char] = this.getDigits(gathered)
                 }
-                this.pushBack(char);
-                return { pos: pos, tokenstr: gathered, tok: Token.NUMBER };
+                this.pushBack(char)
+                return { pos: pos, tokenstr: gathered, tok: Token.NUMBER }
 
             case TokenAction.GATHER_GREATER:
-                char = this.nextNonBlank();
+                char = this.nextNonBlank()
                 if (char === '=') {
                     return {
                         pos: pos,
                         tokenstr: gathered + char,
                         tok: Token.GREATEREQUAL,
-                    };
+                    }
                 } else if (char === '>') {
                     return {
                         pos: pos,
                         tokenstr: gathered + char,
                         tok: Token.NOTEQUAL,
-                    };
+                    }
                 }
-                this.pushBack(char);
-                return { pos: pos, tokenstr: gathered, tok: Token.GREATER };
+                this.pushBack(char)
+                return { pos: pos, tokenstr: gathered, tok: Token.GREATER }
 
             case TokenAction.GATHER_LESS:
-                char = this.nextNonBlank();
+                char = this.nextNonBlank()
                 if (char === '=') {
                     return {
                         pos: pos,
                         tokenstr: gathered + char,
                         tok: Token.LESSEQUAL,
-                    };
+                    }
                 }
-                this.pushBack(char);
-                return { pos: pos, tokenstr: gathered, tok: Token.LESS };
+                this.pushBack(char)
+                return { pos: pos, tokenstr: gathered, tok: Token.LESS }
 
             case TokenAction.VAR:
             case TokenAction.KEYORVAR:
-                char = this.nextNonBlank();
+                char = this.nextNonBlank()
                 // Looking for string variable like "A$"
                 if (char === '$') {
                     return {
                         pos: pos,
                         tokenstr: gathered + char,
                         tok: Token.STRINGVAR,
-                    };
+                    }
                 }
 
-                tokentype = Token.VARIABLE;
+                tokentype = Token.VARIABLE
                 if (char >= '0' && char <= '9') {
                     // We have a variable for sure like A9 or possibly A9$
-                    gathered += char;
-                    char = this.nextNonBlank();
+                    gathered += char
+                    char = this.nextNonBlank()
                     if (char === '$') {
-                        gathered += char;
-                        tokentype = Token.STRINGVAR;
+                        gathered += char
+                        tokentype = Token.STRINGVAR
                     } else {
-                        this.pushBack(char);
+                        this.pushBack(char)
                     }
-                    return { pos: pos, tokenstr: gathered, tok: tokentype };
+                    return { pos: pos, tokenstr: gathered, tok: tokentype }
                 }
                 if (
                     action === TokenAction.VAR ||
                     LexAction[gathered + char.toUpperCase()] === undefined
                 ) {
-                    this.pushBack(char);
-                    return { pos: pos, tokenstr: gathered, tok: tokentype };
+                    this.pushBack(char)
+                    return { pos: pos, tokenstr: gathered, tok: tokentype }
                 }
-                action = LexAction[gathered + char.toUpperCase()];
+                action = LexAction[gathered + char.toUpperCase()]
                 if (action === undefined) {
-                    this.pushBack(char);
-                    return { pos: pos, tokenstr: gathered, tok: Token.INVALID };
+                    this.pushBack(char)
+                    return { pos: pos, tokenstr: gathered, tok: Token.INVALID }
                 }
-                gathered += char.toUpperCase();
+                gathered += char.toUpperCase()
 
             // Fall through into the gather code
             case TokenAction.GATHER:
             case TokenAction.GATHER_END:
-                char = this.nextNonBlank();
+                char = this.nextNonBlank()
                 // console.log(
                 //     `Gathering: '${gathered}'+'${char}' action=${action}`
                 // );
-                while (
-                    action === TokenAction.GATHER ||
-                    action === TokenAction.GATHER_END
-                ) {
-                    let newAction = LexAction[gathered + char.toUpperCase()];
+                while (action === TokenAction.GATHER || action === TokenAction.GATHER_END) {
+                    let newAction = LexAction[gathered + char.toUpperCase()]
                     // console.log(
                     //     `Gather check: '${gathered}'+'${char}' action=${newAction}`
                     // );
                     if (newAction === undefined || char === '') {
                         if (action === TokenAction.GATHER_END) {
-                            tokentype = Token.END;
+                            tokentype = Token.END
                         } else {
-                            tokentype = Token.INVALID;
+                            tokentype = Token.INVALID
                         }
-                        this.pushBack(char);
-                        return { pos: pos, tokenstr: gathered, tok: tokentype };
+                        this.pushBack(char)
+                        return { pos: pos, tokenstr: gathered, tok: tokentype }
                     }
-                    gathered += char.toUpperCase();
-                    char = this.nextNonBlank();
-                    action = newAction;
+                    gathered += char.toUpperCase()
+                    char = this.nextNonBlank()
+                    action = newAction
                     // console.log(
                     //     `Gatherloop: '${gathered}'+'${char}' action=${action}`
                     // );
@@ -755,28 +752,28 @@ export class Tokenizer {
                 //     `ENDGatherloop: '${gathered}'+'${char}' action=${action}`
                 // );
                 if (action === TokenAction.K_FN) {
-                    let fnc = char.toUpperCase();
+                    let fnc = char.toUpperCase()
                     if (fnc >= 'A' && fnc <= 'Z') {
                         return {
                             pos: pos,
                             tokenstr: gathered + fnc,
                             tok: Token.FN,
-                        };
+                        }
                     }
-                    this.pushBack(char);
-                    return { pos: pos, tokenstr: gathered, tok: Token.INVALID };
+                    this.pushBack(char)
+                    return { pos: pos, tokenstr: gathered, tok: Token.INVALID }
                 }
-                this.pushBack(char);
+                this.pushBack(char)
 
             // Fall into default action to map the keyword
             default:
-                let lexType = MapLexToken[action];
+                let lexType = MapLexToken[action]
                 if (lexType !== undefined) {
-                    return { pos: pos, tokenstr: gathered, tok: lexType };
+                    return { pos: pos, tokenstr: gathered, tok: lexType }
                 }
-                break;
+                break
         }
-        return { pos: pos, tokenstr: gathered, tok: tokentype };
+        return { pos: pos, tokenstr: gathered, tok: tokentype }
     }
     /**
      * Get the next token (taking into account any token state pushback)
@@ -784,28 +781,28 @@ export class Tokenizer {
      */
     public getToken(): [string, Token] {
         if (this.stackpos < this.tokenstack.length) {
-            const tokenstr = this.tokenstack[this.stackpos].tokenstr;
-            const token = this.tokenstack[this.stackpos].tok;
-            this.stackpos++;
-            return [tokenstr, token];
+            const tokenstr = this.tokenstack[this.stackpos].tokenstr
+            const token = this.tokenstack[this.stackpos].tok
+            this.stackpos++
+            return [tokenstr, token]
         }
-        const item = this.parseToken();
-        this.tokenstack.push(item);
-        this.stackpos = this.tokenstack.length;
-        return [item.tokenstr, item.tok];
+        const item = this.parseToken()
+        this.tokenstack.push(item)
+        this.stackpos = this.tokenstack.length
+        return [item.tokenstr, item.tok]
     }
     /**
      * Save where we are in the parsing
      * @returns Save state to be restored later
      */
     public saveState(): number {
-        return this.stackpos;
+        return this.stackpos
     }
     /**
      * Restore where we are in parsing.
      * @param pos Position to restore t
      */
     public restoreState(pos: number): void {
-        this.stackpos = pos;
+        this.stackpos = pos
     }
 }

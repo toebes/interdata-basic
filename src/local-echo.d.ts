@@ -1,1 +1,1 @@
-declare module 'local-echo';
+declare module 'local-echo'

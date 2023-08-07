@@ -27,32 +27,32 @@
  */
 
 export class SourceLine {
-    protected source: string = '';
-    protected linenum: number = 0;
+    protected source: string = ''
+    protected linenum: number = 0
 
     public constructor(linenum: number = 0, source: string = '') {
-        this.setLineNum(linenum);
-        this.setSource(source);
+        this.setLineNum(linenum)
+        this.setSource(source)
     }
 
     public setSource(source: string): void {
-        this.source = source;
+        this.source = source
     }
 
     public setLineNum(linenum: number): void {
-        this.linenum = linenum;
+        this.linenum = linenum
     }
 
     public store(linenum: number, source: string): void {
-        this.setLineNum(linenum);
-        this.setSource(source);
+        this.setLineNum(linenum)
+        this.setSource(source)
     }
 
     public getLineNum(): number {
-        return this.linenum;
+        return this.linenum
     }
 
     public getSource(): string {
-        return this.source;
+        return this.source
     }
 }
