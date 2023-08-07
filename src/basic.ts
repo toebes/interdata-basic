@@ -41,6 +41,7 @@ import {
     DATASyntax,
     READVarSyntax,
     ONChoiceSyntax,
+    INPUTVarSyntax,
 } from './syntax'
 import { ErrMsg, Variables } from './variables'
 
@@ -308,6 +309,9 @@ export class Basic {
                 logicalUnit.tabPos += out.length
                 logicalUnit.outputFunction(out)
                 parsed = this.Parse(this.tokenizer, PRINTVarSyntax)
+                if (parsed.error !== undefined) {
+                    return resolve(this.programError(parsed.error as string))
+                }
             }
             // IF we didn't get all the way to the end of the print line, something is wrong
             if (parsed.endinput === undefined) {
@@ -478,6 +482,9 @@ export class Basic {
                     return resolve('')
                 }
                 parsed = this.Parse(this.tokenizer, ONChoiceSyntax)
+                if (parsed.error !== undefined) {
+                    return resolve(this.programError(parsed.error as string))
+                }
             }
             return resolve('')
         })
@@ -781,6 +788,7 @@ export class Basic {
                     let parsed = this.Parse(tokenizer, DATASyntax)
                     // If it failed to parse, let them know
                     if (parsed.error !== undefined) {
+                        // TODO - figure out if this should do the ON ERROR code
                         this.programError(parsed.error as string)
                         return
                     }
@@ -796,6 +804,75 @@ export class Basic {
         return new Promise(async (resolve) => {
             let logicalUnit = this.io.GetUnit(parsed.unit as number)
             let inputString = await logicalUnit.inputFunction()
+            if (inputString === undefined) {
+                // We hit the end of file
+                return resolve(this.programError(`IO-ERR 88${parsed.unit} END OF FILE`))
+            }
+            let pos = 0
+            // Now that we have the input string, let's map it to the input variables
+            while (parsed.variable !== undefined) {
+                let varname = parsed.variable as string
+                let isString = parsed.variable_type === Token.STRINGVAR
+                let idx1 = parsed.index1 as number
+                let idx2 = parsed.index2 as number
+                let value: ExprVal
+                if (isString) {
+                    let foo = inputString.slice(pos)
+                    if (foo.trim().substring(0, 1) === '"') {
+                        let startQuote = foo.indexOf('"')
+                        let endQuote = foo.indexOf('"', startQuote + 1)
+                        if (endQuote === -1) {
+                            // return resolve(this.programError(`XX-ERR MISSING CLOSING QUOTE FOR INPUT STRING`))
+                            // Let's be nice and give them the remainder of the string
+                            value = foo.slice(startQuote + 1)
+                            pos += foo.length + 2
+                        } else {
+                            value = foo.slice(startQuote + 1, endQuote)
+                            pos += endQuote + 1 - startQuote
+                        }
+                        // quoted string, look for the closing quote
+                    } else {
+                        let commaIndex = inputString.indexOf(',', pos)
+                        value = inputString.slice(pos)
+                        if (commaIndex > 0) {
+                            value = inputString.slice(pos, commaIndex)
+                        }
+                        pos += value.length
+                    }
+                } else {
+                    // We are pulling a number.
+                    let commaIndex = inputString.indexOf(',', pos)
+                    let numstr = inputString.slice(pos)
+                    if (commaIndex > 0) {
+                        numstr = inputString.slice(pos, commaIndex)
+                        pos = commaIndex + 1
+                    } else {
+                        pos = inputString.length
+                    }
+                    console.log(`Checking for number: '${numstr}'`)
+                    numstr = numstr.trim()
+                    if (!this.isNumber(numstr)) {
+                        return resolve(this.programError(`IN-ERR INVALID INPUT NUMBER '${numstr}'`))
+                    }
+                    value = Number(numstr)
+                }
+                let emsg = this.doAssign(isString, varname, idx1, idx2, value)
+                if (emsg !== undefined) {
+                    return resolve(this.programError(emsg))
+                }
+                if (parsed.endinput !== undefined) {
+                    // Make sure we used up the remainder of the string.
+                    let remain = inputString.slice(pos, pos + 2).trim()
+                    if (remain !== '') {
+                        return resolve(this.programError(`IN-ERR EXTRA INPUT ON LINE`))
+                    }
+                    return resolve('')
+                }
+                parsed = this.Parse(this.tokenizer, INPUTVarSyntax)
+                if (parsed.error !== undefined) {
+                    return resolve(this.programError(parsed.error as string))
+                }
+            }
             return resolve('')
         })
     }
@@ -824,6 +901,9 @@ export class Basic {
                     return resolve('')
                 }
                 parsed = this.Parse(this.tokenizer, READVarSyntax)
+                if (parsed.error !== undefined) {
+                    return resolve(this.programError(parsed.error as string))
+                }
             }
             return resolve('')
         })
@@ -1222,14 +1302,14 @@ export class Basic {
                     if (emsg !== undefined) {
                         return [value, emsg]
                     }
-                    if (this.MatchToken(source, [Token.COMMA])) {
+                    if (this.MatchToken(source, [Token.COMMA]) === Token.COMMA) {
                         ;[value2, emsg] = this.EvalExpression(source)
                         ;[value2, emsg] = this.CheckType(value2, emsg, 'numeric', '')
                         if (emsg !== undefined) {
                             return [value2, emsg]
                         }
                     }
-                    if (!this.MatchToken(source, [Token.RPAREN])) {
+                    if (this.MatchToken(source, [Token.RPAREN]) !== Token.RPAREN) {
                         return [value, `PR-ERR SYNTAX ERROR - MISSING )`]
                     }
                     if (token === Token.STRINGVAR) {
