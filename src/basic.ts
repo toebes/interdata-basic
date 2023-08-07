@@ -94,6 +94,7 @@ export class Basic {
         [Token.STOP]: this.cmdSTOP.bind(this),
         [Token.READ]: this.cmdREAD.bind(this),
         [Token.RESTORE]: this.cmdRESTORE.bind(this),
+        [Token.CALL]: this.cmdCALL.bind(this),
     }
 
     public async doRun() {
@@ -564,6 +565,15 @@ export class Basic {
      * @returns
      */
     private cmdREM(parsed: ParseResult): string {
+        return ''
+    }
+    /**
+     * CALL Statement - call a system assembler function
+     * @param parsed Parsed command structure
+     * @returns Command to execute (nothing in this case)
+     */
+    private cmdCALL(parsed: ParseResult): string {
+        // We can ignore everything on the line for now
         return ''
     }
     /**
