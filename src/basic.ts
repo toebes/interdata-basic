@@ -610,9 +610,11 @@ export class Basic {
             if (parsed.unit !== undefined) {
                 unit = parsed.unit as number
             }
+            this.io.Rewind(unit)
             const source = this.program.List(firstLine, lastLine)
             source.forEach((sourceLine) => {
-                this.io.WriteLine(`${sourceLine.getLineNum()} ${sourceLine.getSource()}`, unit)
+                this.io.Write(unit, `${sourceLine.getLineNum()} ${sourceLine.getSource()}`)
+                this.io.WriteFileMark(unit)
             })
             return resolve('')
         })

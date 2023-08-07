@@ -25,12 +25,15 @@
  * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
  * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+export type SeekType = 'absolute' | 'relative'
 export type OutputFunction = (str: string) => void
 export type InputFunction = () => Promise<string | undefined>
+export type SeekFunction = (record: number, type: SeekType) => void
 
 export type LogicalUnit = {
     inputFunction: InputFunction
     outputFunction: OutputFunction
+    seekFunction: SeekFunction
     tabPos: number
 }
 
@@ -54,6 +57,19 @@ export class IO {
         console.log(`Output:${str}`)
     }
     /**
+     * Seek within the file
+     * @param record Record number to seek to
+     * @param type Type of seek operation 'absolute' 'relative'
+     * To seek to the beginning seek(0, 'absolute')
+     * To seek to the end  seek(-1, 'absolute')
+     * To seek to the next to the last record seek(-2, 'absolute')
+     * To seek to the third record seek(2, 'absolute')
+     * To seek back one record seek(-1, 'relative')
+     * To skip to the next record seek(1, 'relative')
+     * seek(0, 'relative') does nothing.
+     */
+    protected defaultSeek(record: number, type: SeekType): void {}
+    /**
      *
      * @param unit Unit number to look for
      * @returns Logical unit if found in map or dummy unit
@@ -65,6 +81,7 @@ export class IO {
             result = {
                 inputFunction: this.defaultInput,
                 outputFunction: this.defaultOutput,
+                seekFunction: this.defaultSeek,
                 tabPos: 0,
             }
         }
@@ -90,12 +107,14 @@ export class IO {
     public OpenUnit(
         unit: number,
         inputFunction: InputFunction = this.defaultInput,
-        outputFunction: OutputFunction = this.defaultOutput
+        outputFunction: OutputFunction = this.defaultOutput,
+        seekFunction: SeekFunction = this.defaultSeek
     ) {
         const lookupUnit = this.mapUnitNumber(unit)
         this.units[lookupUnit] = {
             inputFunction: inputFunction,
             outputFunction: outputFunction,
+            seekFunction: seekFunction,
             tabPos: 0,
         }
     }
@@ -147,30 +166,31 @@ export class IO {
      * @param str String to output
      */
     public WriteLine(str: string, unit = 5) {
-        this.Write(unit, str + '\r\n')
+        this.Write(unit, str)
+        this.WriteFileMark(unit)
     }
     /**
      * Rewind the logical unit to the beginnign (if it supports it)
      * @param unit Logical unit
      */
-    public Rewind(unit: number) {
-        // const logicalUnit = this.GetUnit(unit);
-        console.log(`Rewind unit ${unit}`)
+    public Rewind(unit: number = 5) {
+        const logicalUnit = this.GetUnit(unit)
+        logicalUnit.seekFunction(0, 'absolute')
     }
     /**
      * Write a file mark (end of record) to the logical unit (if it supports it)
      * @param unit Logical unit
      */
-    public WriteFileMark(unit: number) {
-        // const logicalUnit = this.GetUnit(unit);
-        console.log(`Write File Mark ${unit}`)
+    public WriteFileMark(unit: number = 5) {
+        const logicalUnit = this.GetUnit(unit)
+        logicalUnit.outputFunction('\r\n')
     }
     /**
      * Backspace the logical unit one record (if it supports it)
      * @param unit Logical unit
      */
-    public BackSpace(unit: number) {
-        // const logicalUnit = this.GetUnit(unit);
-        console.log(`BackSpace ${unit}`)
+    public BackSpace(unit: number = 5) {
+        const logicalUnit = this.GetUnit(unit)
+        logicalUnit.seekFunction(-1, 'relative')
     }
 }

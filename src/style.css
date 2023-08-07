@@ -6,6 +6,15 @@
     font-family: monospace;
     white-space: pre;
 }
+#unittext {
+    border : 2px outset;
+    margin: 10px;
+    background-color: lightgoldenrodyellow;
+    width: 750px;
+    padding: 3px;
+    height: 400px;
+    color: black;
+}
 
 .xterm {
     border: 2px outset;
@@ -225,3 +234,4 @@
     z-index: 2;
     position: relative;
 }
+
