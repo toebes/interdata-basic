@@ -247,6 +247,11 @@ export const NEXTSyntax: SyntaxElem[] = [
     { tok: Token.ENDINPUT, val: 'endinput' },
 ]
 
+export const ONChoiceSyntax: SyntaxElem[] = [
+    { tok: Token.EXPRESSION, val: 'target', epxtype: 'numeric' },
+    { optional: [{ tok: Token.COMMA, val: 'comma' }] },
+    { optional: [{ tok: Token.ENDINPUT, val: 'endinput' }] },
+]
 //
 export const ONSyntax: SyntaxElem[] = [
     {

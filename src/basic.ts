@@ -40,6 +40,7 @@ import {
     DIMSyntax,
     DATASyntax,
     READVarSyntax,
+    ONChoiceSyntax,
 } from './syntax'
 import { ErrMsg, Variables } from './variables'
 
@@ -60,6 +61,7 @@ export class Basic {
     public io = new IO()
     protected lastErrorString = ''
     protected lastErrorLine = 0
+    protected onErrorLine: number | undefined = undefined
     protected isRunning = false
     protected isTracing = false
     protected runSourceIndex = 0
@@ -98,6 +100,7 @@ export class Basic {
         [Token.REW]: this.cmdREW.bind(this),
         [Token.WFM]: this.cmdWFM.bind(this),
         [Token.BSP]: this.cmdBSP.bind(this),
+        [Token.ON]: this.cmdON.bind(this),
     }
 
     public async doRun() {
@@ -160,7 +163,7 @@ export class Basic {
                 cmd = cmdFunc(parsed)
             } else {
                 // We don't handle the command so let them know
-                this.io.WriteLine(`UNHANDLED COMMAND '${tokenstr} - ${token}`)
+                cmd = this.programError(`UNKNOWN COMMAND '${tokenstr} - ${token}`)
             }
         }
     }
@@ -173,10 +176,24 @@ export class Basic {
         this.resetRunState()
         return ''
     }
-    public programError(msg: string) {
+    public programError(msg: string): string {
         // See if we have an ON ERROR in effect first
+        if (this.onErrorLine !== undefined) {
+            let onErrorLine = this.onErrorLine
+            this.onErrorLine = undefined
+            this.lastErrorString = msg
+
+            let lastErrorLine = this.getCurrentLineNum()
+            if (lastErrorLine === undefined) {
+                this.lastErrorLine = 0
+            } else {
+                this.lastErrorLine = lastErrorLine
+            }
+            return `GOTO ${onErrorLine}`
+        }
         this.isRunning = false
         this.io.WriteLine(msg)
+        return ''
     }
 
     public isNumber(val: string): boolean {
@@ -363,7 +380,7 @@ export class Basic {
      * @param parsed Parsed structure
      */
     private cmdGOSUB(parsed: ParseResult): string {
-        const lineIndex = this.getSourceIndex(parsed.line as number)
+        const [lineIndex, cmd] = this.getSourceIndex(parsed.line as number)
         if (lineIndex !== undefined) {
             if (this.gosubStack.length > GOSUBDEPTH) {
                 this.programError(`ATTEMPT TO GOSUB MORE THAN ${GOSUBDEPTH}`)
@@ -372,7 +389,7 @@ export class Basic {
                 this.runSourceIndex = lineIndex
             }
         }
-        return ''
+        return cmd
     }
     /**
      * Process RETURN command
@@ -403,17 +420,55 @@ export class Basic {
         return ''
     }
     /**
-     * Process GOTO command
+     * ON Command
      * @param parsed Parsed structure
+     * @returns Additional command to execute
      */
-    private cmdGOTO(parsed: ParseResult): string {
-        const lineIndex = this.getSourceIndex(parsed.line as number)
-        if (lineIndex !== undefined) {
-            this.runSourceIndex = lineIndex
+    private cmdON(parsed: ParseResult): string {
+        if (parsed.onerror !== undefined) {
+            const [lineIndex, cmd] = this.getSourceIndex(parsed.target as number)
+            if (lineIndex !== undefined) {
+                this.onErrorLine = parsed.target as number
+            }
+            return cmd
+        }
+        let cmdBase = 'GOTO'
+        if (parsed.onaction === Token.GOSUB) {
+            cmdBase = 'GOSUB'
+        }
+        // This is a on (n).  Figure out which one we want
+        let choice = Math.floor(parsed.expression as number)
+        while (choice > 0) {
+            if (choice === 1) {
+                return `${cmdBase} ${parsed.target as number}`
+            }
+            choice--
+            if (parsed.comma == undefined || parsed.endinput !== undefined) {
+                return ''
+            }
+            parsed = this.Parse(this.tokenizer, ONChoiceSyntax)
         }
         return ''
     }
-    private getSourceIndex(lineNum: number): number | undefined {
+    /**
+     * Process GOTO command
+     * @param parsed Parsed structure
+     * @returns Additional command to execute
+     */
+    private cmdGOTO(parsed: ParseResult): string {
+        const [lineIndex, cmd] = this.getSourceIndex(parsed.line as number)
+        if (lineIndex !== undefined) {
+            this.runSourceIndex = lineIndex
+        }
+        return cmd
+    }
+
+    /**
+     * Get the location in the source where a line number is at (if found)
+     * @param lineNum Line number to find
+     * @returns Line index and command to execute (in case of error)
+     */
+    private getSourceIndex(lineNum: number): [number | undefined, string] {
         const lineIndex = this.program.findLineIndex(lineNum)
         const checkLine = this.program.getSourceLine(lineIndex)
         if (
@@ -421,15 +476,15 @@ export class Basic {
             checkLine === undefined ||
             lineNum !== checkLine.getLineNum()
         ) {
-            this.programError(`LINE NUMBER ${lineNum} DOES NOT EXIST`)
-            return undefined
+            return [undefined, this.programError(`LINE NUMBER ${lineNum} DOES NOT EXIST`)]
         }
-        return lineIndex
+        return [lineIndex, '']
     }
 
     /**
      * Process LET command
      * @param parsed Parsed structure
+     * @returns Additional command to execute
      */
     private cmdLET(parsed: ParseResult): string {
         let varname = parsed.variable as string
@@ -442,7 +497,7 @@ export class Basic {
         // We can only assign strings to strings and numbers to numbers
         emsg = this.doAssign(isString, varname, idx1, idx2, assignVal)
         if (emsg !== undefined) {
-            this.io.WriteLine(emsg)
+            return this.programError(emsg)
         }
         return ''
     }
@@ -622,14 +677,19 @@ export class Basic {
      */
     private cmdSTOP(parsed: ParseResult): string {
         this.isRunning = false
-        let lineNum = ''
-        let sourceline = this.program.getSourceLine(this.runSourceIndex - 1)
-        if (sourceline !== undefined) {
-            lineNum = String(sourceline.getLineNum())
-        }
+        let lineNum = this.getCurrentLineNum()
         this.io.WriteLine(`STOP ${lineNum}`)
         return ''
     }
+    private getCurrentLineNum(): number | undefined {
+        let lineNum: number | undefined
+        let sourceline = this.program.getSourceLine(this.runSourceIndex - 1)
+        if (sourceline !== undefined) {
+            lineNum = sourceline.getLineNum()
+        }
+        return lineNum
+    }
+
     private fillData() {
         const programLines = this.program.getSourceCount()
         for (let i = 0; i < programLines; i++) {
@@ -662,6 +722,7 @@ export class Basic {
      * @returns command to execute
      */
     private cmdREAD(parsed: ParseResult): string {
+        let cmd = ''
         while (parsed.variable !== undefined) {
             let varname = parsed.variable as string
             let isString = parsed.variable_type === Token.STRINGVAR
@@ -674,7 +735,7 @@ export class Basic {
             }
             let emsg = this.doAssign(isString, varname, idx1, idx2, item)
             if (emsg !== undefined) {
-                this.io.WriteLine(emsg)
+                return this.programError(emsg)
             }
             if (parsed.endinput !== undefined) {
                 return ''
@@ -1205,7 +1266,7 @@ export class Basic {
             return [value, emsg]
         }
         const token = this.MatchToken(source, [Token.OR])
-        if (token == Token.OR) {
+        if (token === Token.OR) {
             ;[value, emsg] = this.CheckType(value, emsg, 'numeric', '')
             if (emsg !== undefined) {
                 return [value, emsg]
