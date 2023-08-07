@@ -155,7 +155,7 @@ export class Basic {
             }
             // Line Numbers are for storing a line
             if (token === Token.NUMBER) {
-                return this.storeLine(tokenstr)
+                return this.storeLine(Number(tokenstr))
             }
             // See if we have a command handler for the command
             let cmdFunc = this.cmdLookup[token]
@@ -826,8 +826,88 @@ export class Basic {
         this.io.WriteLine('*BREAK*')
     }
 
-    private storeLine(tokenstr: string) {
-        this.program.addLine(Number(tokenstr), this.tokenizer.getRemainder())
+    private storeLine(linenum: number) {
+        const tokenSpaceAfter = [
+            Token.COMMA,
+            Token.EQUAL,
+            Token.AND,
+            Token.BSP,
+            Token.CALL,
+            Token.DATA,
+            Token.DEF,
+            Token.DELETE,
+            Token.DIM,
+            Token.END,
+            Token.ENDTRACE,
+            Token.ERASE,
+            Token.ERROR,
+            Token.FILES,
+            Token.FOR,
+            Token.GOSUB,
+            Token.GOTO,
+            Token.IF,
+            Token.INPUT,
+            Token.LET,
+            Token.LIST,
+            Token.LOAD,
+            Token.MAT,
+            Token.NEW,
+            Token.NEXT,
+            Token.ON,
+            Token.OR,
+            Token.PAUSE,
+            Token.PRINT,
+            Token.RANDOM,
+            Token.READ,
+            Token.REM,
+            Token.RENUM,
+            Token.RESTORE,
+            Token.RETURN,
+            Token.REW,
+            Token.RUN,
+            Token.SETTRACE,
+            Token.SIZE,
+            Token.STEP,
+            Token.STOP,
+            Token.THEN,
+            Token.TO,
+            Token.USING,
+            Token.VAL,
+            Token.WFM,
+            Token.SEMI,
+            Token.ERROR,
+        ]
+        const tokenSpaceBefore = [
+            Token.EQUAL,
+            Token.AND,
+            Token.ERROR,
+            Token.OR,
+            Token.THEN,
+            Token.TO,
+            Token.ERROR,
+        ]
+
+        // Go through all the tokens on the line and construct a clean version of the text
+        let line = ''
+        let extra = ''
+        let [tokenstr, token] = this.tokenizer.getToken()
+        while (token !== Token.ENDINPUT) {
+            if (token === Token.INVALID || token === Token.REM) {
+                line += extra + tokenstr + this.tokenizer.getRemainder()
+                token = Token.ENDINPUT
+            } else {
+                if (tokenSpaceBefore.includes(token)) {
+                    extra = ' '
+                }
+                line += extra + tokenstr
+                extra = ''
+                if (tokenSpaceAfter.includes(token)) {
+                    extra = ' '
+                }
+                ;[tokenstr, token] = this.tokenizer.getToken()
+            }
+        }
+        this.program.addLine(linenum, line)
     }
 
     /**************************************************************************************************************
